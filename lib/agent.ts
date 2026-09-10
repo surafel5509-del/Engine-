@@ -1,118 +1,13 @@
 import crypto from "node:crypto";
-import { createWorkspace, listFiles, readFileSafe, writeFileSafe } from "./workspace";
-import { loadState, saveState } from "./store";
-import { getProvider, parseActions } from "./providers";
-import { runLocalCommand } from "./runner";
-import { AgentEvent, ProjectState, Task } from "./types";
-
-const id = () => crypto.randomUUID();
-const now = () => new Date().toISOString();
-
-function event(state: ProjectState, kind: AgentEvent["kind"], message: string, role?: AgentEvent["role"], detail?: string) {
-  state.events.push({ id:id(), at:now(), kind, message, role, detail });
-  state.updatedAt = now();
-}
-
-function initialTasks(): Task[] {
-  return [
-    { id:id(), title:"Understand request", description:"Extract requirements and constraints.", role:"planner", status:"pending", priority:1, dependsOn:[], retries:0, maxRetries:2 },
-    { id:id(), title:"Design architecture", description:"Choose stack, boundaries, data model and verification strategy.", role:"planner", status:"pending", priority:2, dependsOn:[], retries:0, maxRetries:2 },
-    { id:id(), title:"Implement software", description:"Create or modify files to satisfy the request.", role:"coder", status:"pending", priority:3, dependsOn:[], retries:0, maxRetries:3 },
-    { id:id(), title:"Build and test", description:"Run appropriate checks and capture failures.", role:"tester", status:"pending", priority:4, dependsOn:[], retries:0, maxRetries:3 },
-    { id:id(), title:"Debug and verify", description:"Fix failures and review the final result.", role:"debugger", status:"pending", priority:5, dependsOn:[], retries:0, maxRetries:3 }
-  ];
-}
-
-export async function createProject(request: string, name = "ForgeAI Project") {
-  const projectId = id();
-  const root = await createWorkspace(projectId);
-  const state: ProjectState = {
-    id:projectId, name, root, request, stack:[], tasks:initialTasks(), events:[], files:[],
-    memory:["User intent: " + request], iteration:0, status:"running", createdAt:now(), updatedAt:now()
-  };
-  await saveState(state);
-  event(state, "info", "Workspace created");
-  await saveState(state);
-  return state;
-}
-
-const system = `You are ForgeAI, an autonomous software engineer.
-You operate inside a bounded workspace. Return ONLY JSON: {"actions":[...]}.
-Available actions:
-write_file {path,content}
-read_file {path}
-run_command {command}
-note {message}
-finish {message}
-Rules:
-- Prefer inspecting before changing.
-- Never use absolute paths.
-- Never use shell operators.
-- Choose a practical production stack from the user's requirements.
-- Keep actions small and verifiable.
-- After coding, run build/test commands appropriate to the detected stack.
-- If a command fails, diagnose it and issue a minimal fix.
-- Do not claim success without verification.`;
-
-export async function runAgent(state: ProjectState, emit: (e: AgentEvent)=>Promise<void>) {
-  const provider = getProvider(state.request);
-  if (!provider) {
-    event(state, "error", "No model provider configured", "planner", "Add MISTRAL_API_KEY, GROQ_API_KEY or CEREBRAS_API_KEY.");
-    state.status = "failed"; await saveState(state); return;
-  }
-  event(state, "model", `Using ${provider.name} / ${provider.model}`, "planner"); await saveState(state);
-
-  const max = Number(process.env.FORGEAI_MAX_ITERATIONS || 8);
-  for (let i=0; i<max; i++) {
-    state.iteration = i + 1;
-    const files = await listFiles(state.root);
-    state.files = files;
-    const context = [
-      `REQUEST:\n${state.request}`,
-      `ITERATION: ${state.iteration}/${max}`,
-      `FILES:\n${files.slice(0,120).join("\n") || "(empty)"}`,
-      `MEMORY:\n${state.memory.slice(-12).join("\n")}`,
-      `RECENT EVENTS:\n${state.events.slice(-12).map(e=>e.message).join("\n")}`
-    ].join("\n\n");
-    const text = await provider.complete(system, context);
-    event(state, "model", "Model produced next engineering actions", "coder", text.slice(0,1800));
-    const actions = parseActions(text);
-    if (!actions.length) {
-      event(state, "error", "Model output was not valid action JSON", "debugger");
-      await saveState(state); await emit(state.events.at(-1)!); continue;
-    }
-    let finished = false;
-    for (const action of actions.slice(0,8)) {
-      if (action.type === "write_file" && action.path && action.content !== undefined) {
-        await writeFileSafe(state.root, action.path, action.content);
-        event(state, "tool", `Wrote ${action.path}`, "coder"); await emit(state.events.at(-1)!);
-      } else if (action.type === "read_file" && action.path) {
-        try {
-          const content = await readFileSafe(state.root, action.path);
-          event(state, "tool", `Read ${action.path}`, "coder", content.slice(0,1400));
-        } catch (e) { event(state, "error", `Read failed: ${action.path}`, "debugger", String(e)); }
-        await emit(state.events.at(-1)!);
-      } else if (action.type === "run_command" && action.command) {
-        try {
-          const result = await runLocalCommand(state.root, action.command);
-          event(state, "command", `${action.command} → exit ${result.code}`, "tester", (result.stdout + "\n" + result.stderr).slice(0,2000));
-        } catch (e) { event(state, "error", `Command blocked/failed: ${action.command}`, "debugger", String(e)); }
-        await emit(state.events.at(-1)!);
-      } else if (action.type === "note" && action.message) {
-        state.memory.push(action.message); event(state, "info", action.message, "reviewer"); await emit(state.events.at(-1)!);
-      } else if (action.type === "finish") {
-        event(state, "success", action.message || "Verified complete", "reviewer"); state.status="done"; finished=true; await emit(state.events.at(-1)!);
-      }
-    }
-    await saveState(state);
-    if (finished) break;
-  }
-  if (state.status === "running") {
-    state.status = "failed";
-    event(state, "error", "Iteration limit reached before verified completion", "debugger");
-    await saveState(state); await emit(state.events.at(-1)!);
-  }
-  return state;
-}
-
-export async function getProject(id: string) { return loadState(id); }
+import { createWorkspace,listFiles,readFileSafe,writeFileSafe,deleteFileSafe } from "./workspace";
+import { saveState,loadState } from "./store";
+import { getProvider,parseActions } from "./providers";
+import { runCommand } from "./runner";
+import { AgentEvent,ProjectState,Task,ModelAction,AgentRole } from "./types";
+const id=()=>crypto.randomUUID(); const now=()=>new Date().toISOString();
+function push(s:ProjectState,kind:AgentEvent["kind"],message:string,role?:AgentRole,detail?:string){const e={id:id(),at:now(),kind,message,role,detail};s.events.push(e);s.updatedAt=e.at;return e;}
+function tasks():Task[]{return [["Understand request","planner"],["Architecture","architect"],["Implement","coder"],["Build & test","tester"],["Debug & verify","debugger"],["Review","reviewer"]].map(([title,role],i)=>({id:id(),title,description:title,role:role as AgentRole,status:"pending",priority:i+1,dependsOn:[],retries:0,maxRetries:3}));}
+export async function createProject(request:string,name="ForgeAI Project"){const pid=id(),root=await createWorkspace(pid);const s:ProjectState={id:pid,name,root,request,stack:[],tasks:tasks(),events:[],files:[],memory:[],iteration:0,status:"running",createdAt:now(),updatedAt:now()};push(s,"info","Isolated workspace created","planner");await saveState(s);return s;}
+const SYSTEM=`You are ForgeAI, a senior autonomous software engineering agent. You must actually engineer software, not just explain it. Work in a bounded workspace. Return ONLY JSON with an actions array. Actions: write_file {path,content}; read_file {path}; delete_file {path}; run_command {command}; note {message}; finish {message}. Never use absolute paths or shell operators. Inspect relevant files before editing. Choose the best stack for the request. Keep changes incremental. After implementation, run available build/type/test commands. If execution is unavailable, still complete code and clearly report that verification is blocked. Never claim a build passed unless a command result proves it.`;
+export async function runAgent(s:ProjectState,emit:(e:AgentEvent)=>Promise<void>,opts:{apiKey?:string;provider?:string;model?:string}={}){const provider=getProvider(opts.provider,opts.apiKey,opts.model);if(!provider){const e=push(s,"error","No AI provider configured","planner","Add an API key in Settings or configure a server environment key.");s.status="failed";await saveState(s);await emit(e);return s;}await emit(push(s,"info",`Connected to ${provider.name} · ${provider.model}`,"planner"));const max=Math.max(1,Math.min(20,Number(process.env.FORGEAI_MAX_ITERATIONS||12)));for(let i=1;i<=max;i++){s.iteration=i;const files=await listFiles(s.root);s.files=files;const previews:string[]=[];for(const f of files.slice(0,60)){try{const c=await readFileSafe(s.root,f);previews.push(`--- ${f} ---\n${c.slice(0,3500)}`)}catch{}}const prompt=`REQUEST:\n${s.request}\n\nITERATION ${i}/${max}\nFILES:\n${files.join("\n")||"(empty)"}\n\nRELEVANT CONTENT:\n${previews.join("\n").slice(0,30000)}\n\nMEMORY:\n${s.memory.slice(-20).join("\n")}\n\nRECENT EVENTS:\n${s.events.slice(-10).map(x=>`${x.kind}: ${x.message} ${x.detail||""}`).join("\n")}`;let raw="";try{raw=await provider.complete(SYSTEM,prompt,opts.apiKey)}catch(e){const ev=push(s,"error","AI request failed","planner",String(e));await saveState(s);await emit(ev);if(i===max)s.status="failed";continue}const actions=parseActions(raw);if(!actions.length){const ev=push(s,"warning","Model returned no executable actions","debugger",raw.slice(0,1200));await emit(ev);continue}for(const a of actions.slice(0,10) as ModelAction[]){try{if(a.type==="write_file"&&a.path&&a.content!==undefined){await writeFileSafe(s.root,a.path,a.content);await emit(push(s,"tool",`Wrote ${a.path}`,"coder"))}else if(a.type==="read_file"&&a.path){const c=await readFileSafe(s.root,a.path);await emit(push(s,"tool",`Read ${a.path}`,"coder",c.slice(0,1800)))}else if(a.type==="delete_file"&&a.path){await deleteFileSafe(s.root,a.path);await emit(push(s,"tool",`Deleted ${a.path}`,"coder"))}else if(a.type==="run_command"&&a.command){const r=await runCommand(s.root,a.command);await emit(push(s,r.code===0?"command":"error",`${a.command} → ${r.code}`,"tester",(r.stdout+"\n"+r.stderr).slice(0,3000)))}else if(a.type==="note"&&a.message){s.memory.push(a.message);await emit(push(s,"info",a.message,"reviewer"))}else if(a.type==="finish"){s.status="done";await emit(push(s,"success",a.message||"Engineering complete","reviewer"));await saveState(s);return s}}catch(e){await emit(push(s,"error",`Action failed: ${a.type}`,"debugger",String(e)))}}await saveState(s)}if(s.status==="running"){s.status="failed";await emit(push(s,"error","Iteration limit reached","debugger"));await saveState(s)}return s}
+export async function getProject(id:string){return loadState(id)}

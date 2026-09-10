@@ -2,32 +2,19 @@
 
 ForgeAI is an autonomous software-engineering workspace: **Idea → Plan → Code → Run → Observe → Fix → Verify → Ship**.
 
-## Included in this build
-
-- IDE-style workspace UI
-- Project/session state model
-- Task graph with dependencies, priorities, retries and progress
-- Real Mistral/Groq/Cerebras provider abstraction using server-side API keys
-- Planner → Coder → Debugger → Tester → Reviewer role orchestration
-- JSON action protocol for model-to-tool execution
-- Safe filesystem tools with path validation
-- Command policy and bounded execution
-- Build/test/error recovery loop
-- SSE real-time agent event stream
-- Project memory / architecture notes
-- Git command adapter (opt-in)
-- Deployment adapter interface
-- Docker sandbox runner specification for isolated worker deployments
-- Existing-project inspection model
-- Change/diff/approval concepts
-- Graceful fallback when no model key is configured
-
-## Important production boundary
-
-`FORGEAI_EXECUTION_MODE=disabled` is the safe default. The local command runner is intended for a trusted development machine. For production, generated code must execute in an isolated worker/container/VM, not inside the public Next.js request process. The repository includes the sandbox interface and Docker runner design so that worker can be attached without exposing arbitrary shell execution to the web app.
+## Functional build
+- Streaming autonomous agent loop
+- Mistral, Groq and Cerebras provider adapters with retries
+- Settings UI for provider and browser-local API key entry
+- Real project workspace, file tree, editor and save API
+- Planner, architect, coder, tester, debugger and reviewer roles
+- Incremental file inspection and safe file mutations
+- Command allowlist and traversal protection
+- Local execution mode plus a production sandbox-worker contract
+- Project state, events and memory APIs
+- Responsive IDE-style interface
 
 ## Run
-
 ```bash
 npm install
 cp .env.example .env.local
@@ -35,10 +22,10 @@ npm run typecheck
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open `http://localhost:3000`.
 
-## Provider routing
+## API keys
+Use Settings for a browser-local key, or set provider environment variables on the server. Never commit keys.
 
-The server chooses a configured provider. Set `FORGEAI_PROVIDER` if you want a fixed provider, otherwise it scores the request for complexity and chooses among configured providers.
-
-Model names are environment variables so they can be updated without changing application code.
+## Production execution
+The safe default is `FORGEAI_EXECUTION_MODE=disabled`. Vercel/serverless is not a secure general-purpose sandbox. Connect a separate isolated container/microVM worker for generated-code execution; see `lib/worker/README.md` and `docs/security.md`.

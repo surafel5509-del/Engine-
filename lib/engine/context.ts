@@ -1,0 +1,1 @@
+import { listFiles,readFileSafe } from "../workspace";export async function buildContext(root:string,maxFiles=60){const files=await listFiles(root);const chunks:string[]=[];for(const file of files.slice(0,maxFiles)){try{chunks.push(`--- ${file} ---\n${(await readFileSafe(root,file)).slice(0,3500)}`)}catch{}}return{files,content:chunks.join("\n").slice(0,30000)}}

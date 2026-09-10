@@ -1,55 +1,7 @@
-import { z } from "zod";
-
-const ActionSchema = z.object({
-  type: z.enum(["write_file","read_file","run_command","finish","note"]),
-  path: z.string().optional(),
-  content: z.string().optional(),
-  command: z.string().optional(),
-  message: z.string().optional()
-});
-export type ModelAction = z.infer<typeof ActionSchema>;
-
-export type Provider = { name: string; model: string; complete: (system: string, user: string) => Promise<string> };
-
-function envProvider(name: string, key: string | undefined, endpoint: string, model: string): Provider | null {
-  if (!key) return null;
-  return {
-    name, model,
-    async complete(system, user) {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          temperature: 0.15,
-          messages: [{ role: "system", content: system }, { role: "user", content: user }]
-        })
-      });
-      if (!res.ok) throw new Error(`${name} API ${res.status}: ${(await res.text()).slice(0,500)}`);
-      const data = await res.json();
-      return data?.choices?.[0]?.message?.content ?? "";
-    }
-  };
-}
-
-export function getProvider(request: string): Provider | null {
-  const forced = process.env.FORGEAI_PROVIDER?.toLowerCase();
-  const candidates = [
-    forced === "mistral" || !forced ? envProvider("Mistral", process.env.MISTRAL_API_KEY, "https://api.mistral.ai/v1/chat/completions", process.env.MISTRAL_MODEL || "mistral-large-latest") : null,
-    forced === "groq" || !forced ? envProvider("Groq", process.env.GROQ_API_KEY, "https://api.groq.com/openai/v1/chat/completions", process.env.GROQ_MODEL || "llama-3.3-70b-versatile") : null,
-    forced === "cerebras" || !forced ? envProvider("Cerebras", process.env.CEREBRAS_API_KEY, "https://api.cerebras.ai/v1/chat/completions", process.env.CEREBRAS_MODEL || "llama-3.3-70b") : null
-  ].filter(Boolean) as Provider[];
-  if (!candidates.length) return null;
-  const complexity = (request.match(/\b(database|auth|payment|mobile|desktop|microservice|realtime|security|migration|production)\b/gi) || []).length;
-  return candidates[Math.min(complexity > 2 ? 0 : candidates.length - 1, candidates.length - 1)];
-}
-
-export function parseActions(text: string): ModelAction[] {
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  try {
-    const value = JSON.parse(cleaned);
-    const list = Array.isArray(value) ? value : value.actions;
-    if (!Array.isArray(list)) return [];
-    return list.map(x => ActionSchema.parse(x));
-  } catch { return []; }
-}
+import { ProviderName } from "./types";
+type Provider={name:ProviderName; model:string; complete:(system:string,user:string,apiKey?:string)=>Promise<string>};
+const configs:Record<ProviderName,{endpoint:string;envKey:string;envModel:string;defaultModel:string}>={mistral:{endpoint:"https://api.mistral.ai/v1/chat/completions",envKey:"MISTRAL_API_KEY",envModel:"MISTRAL_MODEL",defaultModel:"mistral-large-latest"},groq:{endpoint:"https://api.groq.com/openai/v1/chat/completions",envKey:"GROQ_API_KEY",envModel:"GROQ_MODEL",defaultModel:"llama-3.3-70b-versatile"},cerebras:{endpoint:"https://api.cerebras.ai/v1/chat/completions",envKey:"CEREBRAS_API_KEY",envModel:"CEREBRAS_MODEL",defaultModel:"llama-3.3-70b"}};
+function make(name:ProviderName,key?:string,model?:string):Provider|null{const c=configs[name];const token=key||process.env[c.envKey];if(!token)return null;return{name,model:model||process.env[c.envModel]||c.defaultModel,async complete(system,user){for(let attempt=0;attempt<3;attempt++){try{const res=await fetch(c.endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${token}`},body:JSON.stringify({model:this.model,temperature:.1,messages:[{role:"system",content:system},{role:"user",content:user}]})});if(res.ok){const d=await res.json();return d?.choices?.[0]?.message?.content||""}const body=(await res.text()).slice(0,500);if(res.status<500&&res.status!==429)throw new Error(`${name} API ${res.status}: ${body}`);await new Promise(r=>setTimeout(r,700*(attempt+1)))}catch(e){if(attempt===2)throw e}}throw new Error("Provider request failed")}}}
+export function getProvider(preferred?:string,key?:string,model?:string):Provider|null{const p=(preferred||process.env.FORGEAI_PROVIDER||"").toLowerCase() as ProviderName;const order:ProviderName[]=p&&configs[p]?[p]:["mistral","groq","cerebras"];for(const n of order){const x=make(n,key,model);if(x)return x}return null}
+export function parseActions(raw:string){const cleaned=raw.replace(/```(?:json)?/gi,"").replace(/```/g,"").trim();const candidates=[cleaned,cleaned.slice(cleaned.indexOf("{"),cleaned.lastIndexOf("}")+1)];for(const c of candidates){try{const v=JSON.parse(c);const a=Array.isArray(v)?v:v.actions;if(Array.isArray(a))return a.filter(x=>x&&typeof x.type==="string")}catch{}}return []}
+export function providerConfig(){return Object.entries(configs).map(([id,c])=>({id,model:process.env[c.envModel]||c.defaultModel,configured:Boolean(process.env[c.envKey])}))}
