@@ -1,0 +1,7 @@
+:root{
+  --bg:#070a0f;--panel:#0c1119;--panel2:#101722;--line:#202a38;--text:#e8edf5;
+  --muted:#8d99aa;--accent:#7c5cff;--good:#39d98a;--warn:#f6c85f;--bad:#ff647c;
+}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}
+button,input,textarea{font:inherit}button{cursor:pointer}
+::selection{background:#7c5cff44}
