@@ -1,0 +1,9 @@
+# Reference image for the isolated execution worker.
+# The production worker should run this container with:
+# --network=none --memory=512m --cpus=1 --pids-limit=128 --read-only
+# plus a temporary writable workspace mount.
+FROM node:22-bookworm-slim
+RUN useradd -m -u 10001 forge && mkdir -p /workspace && chown -R forge:forge /workspace
+USER forge
+WORKDIR /workspace
+CMD ["sleep","infinity"]
