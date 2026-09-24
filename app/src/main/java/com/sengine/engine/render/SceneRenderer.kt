@@ -118,14 +118,14 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         var i = 0
         while (x <= right && i++ < 400) {
             val idx = Math.round(x / step)
-            r.line(x, bottom, x, top, if (abs(x) < step * 0.01f) 0xAA7FA7FF.toInt() else if (idx % 5 == 0L) major else minor)
+            r.line(x, bottom, x, top, if (abs(x) < step * 0.01f) 0xAA7FA7FF.toInt() else if (idx % 5 == 0) major else minor)
             x += step
         }
         var y = floor(bottom / step) * step
         i = 0
         while (y <= top && i++ < 400) {
             val idx = Math.round(y / step)
-            r.line(left, y, right, y, if (abs(y) < step * 0.01f) 0xAAFF7F7F.toInt() else if (idx % 5 == 0L) major else minor)
+            r.line(left, y, right, y, if (abs(y) < step * 0.01f) 0xAAFF7F7F.toInt() else if (idx % 5 == 0) major else minor)
             y += step
         }
         r.flushLines(1f)

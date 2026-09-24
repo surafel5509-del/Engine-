@@ -472,6 +472,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                             "Move Down" -> scene.moveInOrder(go, 1)
                             "Unparent" -> InspectorPanel.reparentKeepWorld(go, null)
                         }
+                        Unit
                     }
                     refreshHierarchy()
                     select(newSel)

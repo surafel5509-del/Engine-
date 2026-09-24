@@ -154,6 +154,7 @@ class InspectorPanel(private val act: EditorActivity, private val host: EditorHo
                         }
                         "Remove" -> go.components.remove(c)
                     }
+                    Unit
                 }
                 rebuild(); changed(true)
                 true

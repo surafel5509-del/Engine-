@@ -28,7 +28,7 @@ class ScriptEditorActivity : AppCompatActivity() {
     private lateinit var asset: String
     private lateinit var editor: EditText
     private lateinit var status: TextView
-    private lateinit var title: TextView
+    private lateinit var titleView: TextView
     private var saved = ""
     private val handler = Handler(Looper.getMainLooper())
     private val history = ArrayList<String>()
@@ -47,8 +47,8 @@ class ScriptEditorActivity : AppCompatActivity() {
         val root = vbox().apply { setBackgroundColor(C.BG) }
         val bar = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(6), dp(4), dp(6), dp(4)) }
         bar.addView(button("←") { onBackPressedDispatcher.onBackPressed() })
-        title = label(asset, 15f, C.TEXT, true).apply { setPadding(dp(10), 0, dp(10), 0) }
-        bar.addView(title, lp(0, WRAP, 1f))
+        titleView = label(asset, 15f, C.TEXT, true).apply { setPadding(dp(10), 0, dp(10), 0) }
+        bar.addView(titleView, lp(0, WRAP, 1f))
         bar.addView(button("↶") { undo() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
         bar.addView(button("↷") { redo() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
         bar.addView(button("API") { showApi() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
