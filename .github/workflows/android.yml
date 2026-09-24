@@ -42,6 +42,30 @@ jobs:
             exit 1
           }
 
+      - name: Game export test (build a standalone game APK with S Engine's builder)
+        run: |
+          set -o pipefail
+          keytool -genkeypair -keystore export-test.p12 -storetype PKCS12 -storepass sengine -keypass sengine \
+            -alias game -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=S Engine Export Test" -noprompt
+          export SENGINE_SOURCE_APK=$PWD/app/build/outputs/apk/debug/app-debug.apk
+          export SENGINE_KEYSTORE=$PWD/export-test.p12
+          export SENGINE_EXPORT_OUT=$PWD/SpaceRun-game.apk
+          ./gradlew --no-daemon testDebugUnitTest --tests com.sengine.ApkExportTest --rerun 2>&1 | tee export.log || {
+            msg=$(grep -E "SIM |FAILED|Exception|expected|AssertionError|at com.sengine" export.log | head -60 | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Export test::${msg}"; exit 1; }
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          out=$("$BT/apksigner" verify --verbose --print-certs SpaceRun-game.apk 2>&1) || { echo "::error title=apksigner::$(echo "$out" | sed ':a;N;$!ba;s/\n/%0A/g')"; exit 1; }
+          badge=$("$BT/aapt2" dump badging SpaceRun-game.apk 2>&1 | grep -E "^package:|application-label:|launchable-activity" | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::notice title=Exported game APK::$(echo "$out" | head -8 | sed ':a;N;$!ba;s/\n/%0A/g')%0A${badge}%0A$(grep 'SIM export' export.log | head -3)"
+          echo "$badge" | grep -q "name='com.sengine.game.spacerun'" || { echo "::error title=Export::package not renamed"; exit 1; }
+          echo "$badge" | grep -q "versionName='1.2.3'" || { echo "::error title=Export::versionName not patched"; exit 1; }
+
+      - name: Upload exported sample game
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpaceRun-exported-game-apk
+          path: SpaceRun-game.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

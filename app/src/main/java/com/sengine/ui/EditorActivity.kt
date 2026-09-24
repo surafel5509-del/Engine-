@@ -147,11 +147,13 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 state.view.size = (cam.getAny<Camera2D>()!!.size * 1.3f)
             } else state.view.size = 6f
         }
+        val auto3D = synchronized(engine.lock) { engine.mainCamera3D() != null && engine.mainCamera() == null }
+        if (intent.getBooleanExtra("mode3d", false) || auto3D) toggle3D()
         refreshHierarchy()
         inspector.rebuild()
         refreshAssets()
         updateModeUi()
-        appendConsole(0, "S Engine 1.0 — project '${project.name}', scene '${scene.name}'")
+        appendConsole(0, "S Engine Ultimate 2.0 — project '${project.name}', scene '${scene.name}'")
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
