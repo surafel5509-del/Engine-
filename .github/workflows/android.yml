@@ -27,7 +27,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee test.log; code=${PIPESTATUS[0]}
-          msg=$(grep -E "SIM |FAILED|Exception|expected|AssertionError|at com.sengine" test.log | head -80 | sed ':a;N;$!ba;s/\n/%0A/g')
+          msg=$(grep -E "^e: |SIM |FAILED|Exception|expected|AssertionError|at com.sengine" test.log | head -80 | sed ':a;N;$!ba;s/\n/%0A/g')
           echo "::notice title=Engine tests::${msg}"
           exit $code
 
