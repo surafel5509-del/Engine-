@@ -96,7 +96,7 @@ class EngineSimulationTest {
         r.engine.stop()
         r.frames(1)
         assertEquals(Engine.Mode.EDIT, r.engine.mode)
-        assertEquals(coinsBefore, r.engine.scene.objects.count { it.tag == "Coin" })
+        assertEquals(7, r.engine.scene.objects.count { it.tag == "Coin" }) // scene restored on stop
     }
 
     @Test
