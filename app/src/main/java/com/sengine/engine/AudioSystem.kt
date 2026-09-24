@@ -15,6 +15,10 @@ class AudioSystem(private val project: Project) {
 
     fun start() {
         stop()
+        try { createPool() } catch (_: Throwable) { pool = null }
+    }
+
+    private fun createPool() {
         val attrs = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -47,13 +51,13 @@ class AudioSystem(private val project: Project) {
 
     fun stopAll() {
         val p = pool ?: return
-        for (s in streams) p.stop(s)
+        try { for (s in streams) p.stop(s) } catch (_: Throwable) {}
         streams.clear()
     }
 
     fun stop() {
         stopAll()
-        pool?.release()
+        try { pool?.release() } catch (_: Throwable) {}
         pool = null
         ids.clear()
         tone?.release()

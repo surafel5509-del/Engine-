@@ -149,18 +149,26 @@ class SScene(private val engine: Engine, private val sys: ScriptSystem) {
     fun setGravityY(v: Double) { engine.scene.gravityY = v.toFloat() }
 }
 
+/** Plain public fields (Rhino exposes them with their exact names, e.g. input.aDown). */
 class SInput(private val engine: Engine) {
-    private val i get() = engine.input
-    fun getAxisX(): Double = i.axisX.toDouble()
-    fun getAxisY(): Double = i.axisY.toDouble()
-    fun getA(): Boolean = i.a
-    fun getB(): Boolean = i.b
-    fun getADown(): Boolean = i.aDown
-    fun getBDown(): Boolean = i.bDown
-    fun getTouching(): Boolean = i.touching
-    fun getTapped(): Boolean = i.tapped
-    fun getTouchX(): Double = i.touchX.toDouble()
-    fun getTouchY(): Double = i.touchY.toDouble()
+    @JvmField var axisX = 0.0
+    @JvmField var axisY = 0.0
+    @JvmField var a = false
+    @JvmField var b = false
+    @JvmField var aDown = false
+    @JvmField var bDown = false
+    @JvmField var touching = false
+    @JvmField var tapped = false
+    @JvmField var touchX = 0.0
+    @JvmField var touchY = 0.0
+
+    fun sync() {
+        val i = engine.input
+        axisX = i.axisX.toDouble(); axisY = i.axisY.toDouble()
+        a = i.a; b = i.b; aDown = i.aDown; bDown = i.bDown
+        touching = i.touching; tapped = i.tapped
+        touchX = i.touchX.toDouble(); touchY = i.touchY.toDouble()
+    }
 }
 
 class STime(private val engine: Engine) {

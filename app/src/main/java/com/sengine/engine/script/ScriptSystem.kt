@@ -28,6 +28,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     private val instances = ArrayList<Instance>()
     private val wrappers = HashMap<Long, SObject>()
     private val compiled = HashMap<String, Script>()
+    private val inputApi = SInput(engine)
 
     val isRunning get() = cx != null
 
@@ -36,11 +37,14 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         val c = Context.enter()
         c.optimizationLevel = -1
         c.languageVersion = Context.VERSION_ES6
+        // return Java strings / numbers / booleans as native JS values
+        c.wrapFactory.isJavaPrimitiveWrap = false
         cx = c
         ownerThread = Thread.currentThread()
         val g = c.initStandardObjects()
         global = g
-        put(g, "input", SInput(engine))
+        inputApi.sync()
+        put(g, "input", inputApi)
         put(g, "time", STime(engine))
         put(g, "scene", SScene(engine, this))
         put(g, "audio", SAudio(engine))
@@ -147,6 +151,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
 
     fun update(dt: Float) {
         if (cx == null) return
+        inputApi.sync()
         startPending()
         val dtArg = dt.toDouble()
         val input = engine.input

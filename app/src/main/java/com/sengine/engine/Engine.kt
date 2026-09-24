@@ -53,6 +53,7 @@ class Engine(val project: Project, initialScene: Scene) {
     val listeners = java.util.concurrent.CopyOnWriteArrayList<Listener>()
     private val commands = ConcurrentLinkedQueue<() -> Unit>()
     private var snapshot: String? = null
+    private var snapshotScene = ""
     private var pendingSceneLoad: String? = null
 
     val logs = ArrayDeque<String>()
@@ -100,6 +101,7 @@ class Engine(val project: Project, initialScene: Scene) {
     // ---------------------------------------------------------------- play mode
     private fun startPlay() {
         snapshot = SceneSerializer.toJson(scene).toString()
+        snapshotScene = scene.name
         time = 0.0; frame = 0
         input.clear()
         setMode(Mode.PLAY)
@@ -171,9 +173,11 @@ class Engine(val project: Project, initialScene: Scene) {
         val load = pendingSceneLoad
         if (load != null) {
             pendingSceneLoad = null
-            if (project.sceneExists(load)) {
+            val snap = snapshot
+            val fromSnapshot = snap != null && load == snapshotScene
+            if (fromSnapshot || project.sceneExists(load)) {
                 endScene()
-                scene = project.loadScene(load)
+                scene = if (fromSnapshot) SceneSerializer.fromJson(JSONObject(snap!!)) else project.loadScene(load)
                 listeners.forEach { it.onSceneReplaced() }
                 beginScene()
                 log(0, "Loaded scene $load")

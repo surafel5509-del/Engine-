@@ -20,6 +20,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Unit tests (headless engine simulation)
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee test.log; code=${PIPESTATUS[0]}
+          grep -E "SIM |FAILED|Exception|expected|AssertionError" test.log | head -60 | while IFS= read -r line; do
+            echo "::notice::${line}"
+          done
+          exit $code
+
       - name: Build debug APK
         run: |
           chmod +x gradlew
