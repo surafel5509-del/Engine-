@@ -1,8 +1,24 @@
-# S Engine
+# S Engine — Ultimate Edition
 
-**S Engine** is a 2D game engine **and** full visual editor that runs entirely on an Android phone or tablet – think "a small Unity in your pocket". Create a project, build scenes with a hierarchy / inspector / gizmos, write JavaScript behaviours in the built-in code editor, press **Play** to test immediately, then run your game full-screen.
+**S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet – think "a small Unity in your pocket". Create a project, build scenes with a hierarchy / inspector / gizmos, write JavaScript behaviours in the built-in code editor, press **Play** to test immediately, then run your game full-screen.
 
-> Written from scratch in Kotlin. OpenGL ES 2.0 renderer, custom physics, Mozilla Rhino JavaScript runtime. No NDK, no external game frameworks.
+> Written from scratch in Kotlin. OpenGL ES 2.0 renderer (2D + 3D), custom 2D/3D physics, Mozilla Rhino JavaScript runtime, visual blueprints, custom GLSL shaders, and an on-device APK builder. No NDK, no external game frameworks.
+
+## ✨ Ultimate Edition (v2)
+
+| Area | What's new |
+|---|---|
+| **3D engine** | Meshes (cube, sphere, plane, cylinder, cone, torus, capsule, pyramid, **OBJ models**), Blinn-Phong lighting with a directional light + 4 point lights, ambient, fog, emission, textures with tiling, perspective `Camera3D` with follow/smoothing and sky gradient |
+| **3D physics** | `Rigidbody3D` (dynamic / kinematic / static, mass, drag, bounce, friction), box & sphere `Collider3D`, triggers, grounded detection, `scene.raycast()` |
+| **3D editor** | Orbit / pan / zoom viewport, 3D gizmos, 2D ⇄ 3D toggle, full 3D transform in the inspector, 3D object menu |
+| **Render tools** | Custom **GLSL effect shaders** for sprites and meshes (`uTime`, `uParam`, `uTex`…), camera **post-processing** (grayscale, sepia, vignette, CRT, pixelate, bloom, invert, chromatic aberration, custom shader), camera shake, **profiler overlay** (FPS, frame ms, draw calls, objects) |
+| **Sprite animation** | `Animator` component + `.anim` clips; **Animation Editor** with sprite-sheet slicing, tap-to-add frames, live preview, frame strip, all / row / reverse / ping-pong tools |
+| **Blueprints** | Node-based **visual scripting** (`.bp`) — ~45 nodes across Events, Flow, Movement, Physics, Objects, Variables, Game — compiled to JavaScript at play time; pan/zoom canvas, drag wires, view generated code |
+| **Asset Store** | 70+ built-in, procedurally generated assets: tileable textures, pixel-art sprites, **sprite sheets with ready clips**, synthesized **sound effects & music**, shaders, scripts, blueprints, **3D models**, plus themed packs — one tap to add |
+| **Game builder** | **Build APK** on the phone: the runtime is repackaged with your project, the manifest is patched (app name, package, version), the APK is zip-aligned and signed with **APK Signature Scheme v2** (device key in Android Keystore, or your own `.p12`/`.bks`). Install, share or save the result |
+| **Scripting** | 3D API (`z rotX rotY vz setPosition(x,y,z) addForce(x,y,z) forward()`), animation (`play() stopAnimation() isAnimationFinished()`), `setShaderParam()`, `scene.shake()`, `scene.raycast()` |
+| **Templates** | New **3D Demo**, **Animated Platformer**, **Blueprint Demo** |
+| **Quality** | Headless JVM tests run the real engine loop for every template; CI exports a sample game APK and verifies it with `apksigner` and `aapt2` |
 
 ---
 
@@ -34,6 +50,14 @@
 * **Platformer Demo** – run, jump, moving platform, coins with particle bursts, score UI
 * **Space Shooter** – spawning enemies, bullets, explosions, score, game over
 * **Physics Sandbox** – tap to drop bouncy balls and crates onto a pyramid
+* **3D Demo** – 3D character with physics, crates, balls, OBJ trees/rocks, lights, fog, toon & pulse shaders, pickups
+* **Animated Platformer** – sprite-sheet hero with run animation, spinning coins, patrolling slime, textures & sounds
+* **Blueprint Demo** – a player, pickups and a spinner built entirely with visual nodes
+
+### Building a standalone game (APK)
+Editor menu **⋮ → Build APK…** → set app name, package (e.g. `com.mystudio.mygame`) and version → choose signing
+(device key or your own keystore) → **Build**. The finished APK in `builds/` can be installed directly, shared or saved.
+Keep using the **same key** for updates of the same game.
 
 ---
 
@@ -72,6 +96,10 @@ function onTrigger(other) {
 * **scene:** `find(name) findAll(tag) count(tag) spawn(name, x, y) load(name) reload() camera gravityX gravityY`
 * **time:** `time.time time.frame time.fps` — **audio:** `play(file) beep() stopAll()`
 * **helpers:** `log() warn() error() after(sec, fn) every(sec, fn) random() randomInt() clamp() lerp()`
+* **3D:** `z rotX rotY rotZ scaleZ worldZ vz`, `setPosition(x,y,z) move(dx,dy,dz) rotate(rx,ry,rz) setVelocity(x,y,z) addForce(x,y,z) distanceTo3(o) forward() setMeshColor(c)`
+* **animation / render:** `play(clip) stopAnimation() animation isAnimationFinished() setAnimSpeed(s) setShaderParam(v)`
+* **scene (v2):** `spawn(name,x,y,z) shake(amount) raycast(ox,oy,oz,dx,dy,dz,max) camera3D gravity3D`
+* **shaders:** `vec4 effect(vec4 color, vec2 uv)` with `uTime uParam uTex uUseTex uColor uResolution`
 
 Inactive objects make great **prefab templates** – `scene.spawn("Enemy", x, y)` clones them and activates the copy.
 
@@ -107,13 +135,17 @@ app/src/main/java/com/sengine/
 │   ├── Engine.kt            main loop, play/pause/stop, camera follow, particles
 │   ├── Input.kt, AudioSystem.kt
 │   ├── core/                GameObject, Component, Prop system, components, Scene + JSON serializer
-│   ├── math/Affine.kt       2D transforms
-│   ├── physics/             impulse-based 2D physics
-│   ├── render/              GLES2 renderer, textures/text, editor grid & gizmos
+│   ├── math/                Affine (2D) and Mat4 (3D) transforms
+│   ├── physics/             impulse-based 2D and 3D physics
+│   ├── anim/                animation clips + Animator system
+│   ├── blueprint/           visual-script graph, node library, JS compiler
+│   ├── render/              GLES2 2D/3D renderers, meshes/OBJ, shader library, post-processing, gizmos
 │   └── script/              Rhino JavaScript runtime + script API
-├── project/                 project storage, zip import/export, templates
+├── export/                  APK builder: zip writer, manifest (AXML) patcher, v2 signer, keys, game runtime
+├── project/                 project storage, zip import/export, templates, asset store library
 └── ui/                      Projects screen, Editor (hierarchy, inspector, viewport, assets, console),
-                             Script editor, full-screen Player, joystick, color picker
+                             Script / shader editor, Blueprint editor, Animation editor, Asset Store,
+                             Build APK screen, full-screen Player, joystick, color picker
 ```
 
 Projects are stored in app-private storage as plain JSON scenes plus an `assets/` folder:
