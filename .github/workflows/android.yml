@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,3 +47,16 @@ jobs:
         with:
           name: SEngine-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Publish rolling "latest build" pre-release
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk SEngine.apk
+          gh release delete sengine-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create sengine-latest SEngine.apk \
+            --target "${GITHUB_SHA}" --prerelease \
+            --title "S Engine – latest build" \
+            --notes "Automatic debug build of ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install SEngine.apk on Android 8.0+."
+        env:
+          GH_TOKEN: ${{ github.token }}

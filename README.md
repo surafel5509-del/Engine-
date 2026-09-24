@@ -77,6 +77,15 @@ Inactive objects make great **prefab templates** – `scene.spawn("Enemy", x, y)
 
 ---
 
+## Download
+
+Every push is built by GitHub Actions. Grab the APK from:
+
+* **Releases → "S Engine – latest build"** → `SEngine.apk`, or
+* **Actions → latest "Build S Engine APK" run → Artifacts → `SEngine-debug-apk`**
+
+Enable "Install unknown apps" for your browser / file manager, then open the APK.
+
 ## Building
 
 Requirements: JDK 17 and the Android SDK (API 34). Android Studio Hedgehog or newer works out of the box.
