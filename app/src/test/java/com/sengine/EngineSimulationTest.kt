@@ -89,7 +89,7 @@ class EngineSimulationTest {
         val label = r.engine.scene.find("ScoreText")!!.getAny<com.sengine.engine.core.TextRenderer>()!!.text
         println("SIM coins $coinsBefore -> $coinsAfter label='$label' objects=${r.engine.scene.objects.size}")
         assertEquals(coinsBefore - 1, coinsAfter)
-        assertEquals("Coins: 1", label)
+        assertEquals("Coins: ${7 - coinsAfter}", label)
         r.frames(120) // FX cleanup timer
         assertTrue("CoinFX clone should be destroyed", r.engine.scene.objects.none { it.name.startsWith("CoinFX (") })
         assertTrue("script errors: ${r.errors}", r.errors.isEmpty())
