@@ -11,6 +11,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import com.sengine.engine.audio.Song
 import com.sengine.engine.model.ModelPresets
+import com.sengine.project.AssetLibrary.Item
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -23,7 +24,6 @@ import kotlin.random.Random
  * (.smodel with animations) and script recipes — plus themed packs.
  */
 object AssetPacksV3 {
-    private typealias Item = AssetLibrary.Item
 
     private fun png(p: Project, name: String, b: Bitmap) {
         p.assetsDir.mkdirs(); p.assetFile(name).outputStream().use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -370,7 +370,10 @@ object AssetPacksV3 {
         p.shader = LinearGradient(0f, 20f, 0f, 100f, 0xFF5B7CFF.toInt(), 0xFF22D3EE.toInt(), Shader.TileMode.CLAMP)
         c.drawRoundRect(RectF(44f, 16f, 468f, 96f), 12f, 12f, p); return b
     }
-    private fun shade(c: Int, f: Float): Int { fun ch(s: Int) = (((c shr s) and 0xFF) * f).toInt().coerceIn(0, 255); return (c and 0xFF000000.toInt()) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0) }
+    private fun shade(c: Int, f: Float): Int {
+        fun ch(s: Int): Int = (((c shr s) and 0xFF) * f).toInt().coerceIn(0, 255)
+        return (c and 0xFF000000.toInt()) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
 
     // ==================================================================== sound generators
     private object S {
