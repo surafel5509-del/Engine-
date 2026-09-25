@@ -16,6 +16,10 @@ class Project(val dir: File) {
     var startScene = "Main"
     var created = System.currentTimeMillis()
     var orientation = 0 // 0 landscape, 1 portrait
+    var description = ""
+    var accent = 0xFF4C8DFF.toInt()
+    /** Where games persist storage.* data and voxel saves (dot folders are never exported). */
+    var saveDir = File(dir, ".saves")
 
     init {
         if (metaFile.exists()) {
@@ -24,6 +28,8 @@ class Project(val dir: File) {
                 startScene = o.optString("startScene", "Main")
                 created = o.optLong("created", created)
                 orientation = o.optInt("orientation", 0)
+                description = o.optString("description", "")
+                accent = o.optInt("accent", accent)
             } catch (_: Exception) {
             }
         }
@@ -33,7 +39,9 @@ class Project(val dir: File) {
         dir.mkdirs(); assetsDir.mkdirs(); scenesDir.mkdirs()
         val o = JSONObject()
         o.put("name", name)
-        o.put("engine", "S Engine 1.0")
+        o.put("engine", "S Engine 3.0")
+        o.put("description", description)
+        o.put("accent", accent)
         o.put("startScene", startScene)
         o.put("created", created)
         o.put("orientation", orientation)
@@ -74,6 +82,15 @@ class Project(val dir: File) {
 
     fun writeAsset(n: String, text: String) {
         assetsDir.mkdirs(); assetFile(n).writeText(text)
+    }
+
+    fun loadControls(): com.sengine.engine.controls.ControlLayout {
+        val f = File(dir, com.sengine.engine.controls.ControlLayout.FILE)
+        return try { com.sengine.engine.controls.ControlLayout.fromJson(JSONObject(f.readText())) } catch (_: Exception) { com.sengine.engine.controls.ControlLayout.default() }
+    }
+
+    fun saveControls(l: com.sengine.engine.controls.ControlLayout) {
+        dir.mkdirs(); File(dir, com.sengine.engine.controls.ControlLayout.FILE).writeText(l.toJson().toString(2))
     }
 
     fun uniqueAssetName(base: String): String {

@@ -16,6 +16,10 @@ object ComponentRegistry {
         "Light" to { Light() },
         "Rigidbody3D" to { Rigidbody3D() },
         "Collider3D" to { Collider3D() },
+        "UIPanel" to { UIPanel() },
+        "UIButton" to { UIButton() },
+        "UIProgress" to { UIProgress() },
+        "VoxelWorld" to { VoxelWorld() },
     )
 
     val categories: LinkedHashMap<String, List<String>> = linkedMapOf(
@@ -24,6 +28,8 @@ object ComponentRegistry {
         "Physics 2D" to listOf("Rigidbody2D", "Collider2D"),
         "Physics 3D" to listOf("Rigidbody3D", "Collider3D"),
         "Scripting & Audio" to listOf("Script", "AudioSource"),
+        "Game UI" to listOf("UIPanel", "UIButton", "UIProgress", "TextRenderer"),
+        "World" to listOf("VoxelWorld"),
     )
 
     val POST_FX = listOf("None", "Grayscale", "Sepia", "Vignette", "CRT", "Pixelate", "Bloom", "Invert", "Chromatic", "Custom Shader")
@@ -41,6 +47,9 @@ class SpriteRenderer : Component() {
     var shader = ""
     var shaderParam = 1f
     var screenSpace = false
+    var anchor = 0
+    var tileX = 1f
+    var tileY = 1f
 
     // runtime (set by Animator)
     var animTexture: String? = null
@@ -55,6 +64,9 @@ class SpriteRenderer : Component() {
         Prop.Asset("Shader", AssetKind.SHADER, { shader }, { shader = it }),
         Prop.F("Shader Param", { shaderParam }, { shaderParam = it }),
         Prop.B("Screen Space UI", { screenSpace }, { screenSpace = it }),
+        Prop.Choice("UI Anchor", UI_ANCHORS, { anchor }, { anchor = it }),
+        Prop.F("Tile X", { tileX }, { tileX = it.coerceAtLeast(0.01f) }),
+        Prop.F("Tile Y", { tileY }, { tileY = it.coerceAtLeast(0.01f) }),
     )
 
     fun resetUv() { uv[0] = 0f; uv[1] = 1f; uv[2] = 1f; uv[3] = 0f; animTexture = null }
@@ -72,10 +84,12 @@ class TextRenderer : Component() {
     var align = 1 // 0 left, 1 center, 2 right
     var bold = false
     var screenSpace = false
+    var anchor = 0
 
     override fun props() = listOf(
         Prop.S("Text", { text }, { text = it }, multiline = true),
         Prop.B("Screen Space UI", { screenSpace }, { screenSpace = it }),
+        Prop.Choice("UI Anchor", UI_ANCHORS, { anchor }, { anchor = it }),
         Prop.F("Size", { size }, { size = it.coerceAtLeast(0.01f) }, 0.05f),
         Prop.Color("Color", { color }, { color = it }),
         Prop.Choice("Align", listOf("Left", "Center", "Right"), { align }, { align = it }),
@@ -102,6 +116,10 @@ class Camera2D : Component() {
         Prop.Choice("Post FX", ComponentRegistry.POST_FX, { postFx }, { postFx = it }),
         Prop.F("FX Intensity", { postIntensity }, { postIntensity = it.coerceIn(0f, 4f) }, 0.05f),
         Prop.Asset("FX Shader", AssetKind.SHADER, { postShader }, { postShader = it }),
+        Prop.B("Shadows", { shadows }, { shadows = it }),
+        Prop.F("Shadow Distance", { shadowDistance }, { shadowDistance = it.coerceIn(5f, 300f) }, 1f),
+        Prop.B("Sun Disc", { sunDisc }, { sunDisc = it }),
+        Prop.Choice("Quality", listOf("Low", "Medium", "High", "Ultra"), { quality }, { quality = it }),
     )
 
     override fun resetRuntime() { shake = 0f }
@@ -270,10 +288,21 @@ class MeshRenderer : Component() {
     var unlit = false
     var shader = ""
     var shaderParam = 1f
+    var castShadows = true
+    var animation = ""
+    var animSpeed = 1f
+    // runtime
+    var animTime = 0f
+    var playingAnim = ""
+
+    override fun resetRuntime() { animTime = 0f; playingAnim = animation }
 
     override fun props() = listOf(
         Prop.Choice("Mesh", MESHES, { mesh }, { mesh = it }),
-        Prop.Asset("Model (.obj)", AssetKind.MODEL, { model }, { model = it }),
+        Prop.Asset("Model (.obj / .smodel)", AssetKind.MODEL, { model }, { model = it }),
+        Prop.S("Model Animation", { animation }, { animation = it }),
+        Prop.F("Anim Speed", { animSpeed }, { animSpeed = it }),
+        Prop.B("Cast Shadows", { castShadows }, { castShadows = it }),
         Prop.Color("Color", { color }, { color = it }),
         Prop.Asset("Texture", AssetKind.TEXTURE, { texture }, { texture = it }),
         Prop.F("Tiling", { tiling }, { tiling = it.coerceAtLeast(0.01f) }),
@@ -307,6 +336,10 @@ class Camera3D : Component() {
     var postIntensity = 1f
     var postShader = ""
     var shake = 0f
+    var shadows = true
+    var shadowDistance = 40f
+    var sunDisc = true
+    var quality = 2 // 0 Low, 1 Medium, 2 High, 3 Ultra
 
     override fun props() = listOf(
         Prop.F("Field of View", { fov }, { fov = it.coerceIn(10f, 150f) }, 1f),
@@ -372,7 +405,9 @@ class Rigidbody3D : Component() {
         Prop.F("Velocity Z", { startVz }, { startVz = it }),
     )
 
-    override fun resetRuntime() { vx = startVx; vy = startVy; vz = startVz; grounded = false }
+    var sleepTime = 0f
+
+    override fun resetRuntime() { vx = startVx; vy = startVy; vz = startVz; grounded = false; sleepTime = 0f }
 }
 
 class Collider3D : Component() {

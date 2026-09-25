@@ -80,9 +80,9 @@ class ViewportController(
     private fun forwardToGame(e: MotionEvent) {
         val inp = engine.input
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { inp.rawTouching = true; inp.rawTouchSX = e.x; inp.rawTouchSY = e.y; inp.tapPending = true }
-            MotionEvent.ACTION_MOVE -> { inp.rawTouchSX = e.x; inp.rawTouchSY = e.y }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> inp.rawTouching = false
+            MotionEvent.ACTION_DOWN -> inp.touch(0, e.x, e.y)
+            MotionEvent.ACTION_MOVE -> inp.touch(1, e.x, e.y)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> inp.touch(2, e.x, e.y)
         }
     }
 

@@ -16,6 +16,7 @@ class SpriteProgram(val id: Int) {
     val uTime = GLES20.glGetUniformLocation(id, "uTime")
     val uParam = GLES20.glGetUniformLocation(id, "uParam")
     val uResolution = GLES20.glGetUniformLocation(id, "uResolution")
+    val uRound = GLES20.glGetUniformLocation(id, "uRound")
 }
 
 /** Lit 3D mesh program. */
@@ -45,6 +46,11 @@ class MeshProgram(val id: Int) {
     val uTime = GLES20.glGetUniformLocation(id, "uTime")
     val uParam = GLES20.glGetUniformLocation(id, "uParam")
     val uResolution = GLES20.glGetUniformLocation(id, "uResolution")
+    val uLightVP = GLES20.glGetUniformLocation(id, "uLightVP")
+    val uShadowMap = GLES20.glGetUniformLocation(id, "uShadowMap")
+    val uShadow = GLES20.glGetUniformLocation(id, "uShadow")
+    val uGrade = GLES20.glGetUniformLocation(id, "uGrade")
+    val uSkyColor = GLES20.glGetUniformLocation(id, "uSkyColor")
 }
 
 /** Full-screen post-processing program. */
@@ -150,16 +156,25 @@ uniform float uAA;
 uniform float uTime;
 uniform float uParam;
 uniform vec2 uResolution;
+uniform vec3 uRound;
 $effect
 void main() {
   float a = 1.0;
-  if (uShape > 0.5 && uShape < 1.5) {
+  if (uShape > 3.5) {
+    // rounded rectangle: uRound.x = width/height, uRound.y = radius (in height units)
+    vec2 q = vP * vec2(uRound.x, 1.0);
+    vec2 b = vec2(0.5 * uRound.x, 0.5);
+    float r = min(uRound.y, min(b.x, b.y));
+    vec2 dd = abs(q) - b + r;
+    float sd = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0) - r;
+    a = clamp(-sd * uAA + 0.5, 0.0, 1.0);
+  } else if (uShape > 0.5 && uShape < 1.5) {
     a = clamp((0.5 - length(vP)) * uAA, 0.0, 1.0);
   } else if (uShape > 1.5 && uShape < 2.5) {
     float w = (0.5 - vP.y) * 0.5;
     float e = min(w - abs(vP.x), vP.y + 0.5);
     a = clamp(e * uAA, 0.0, 1.0);
-  } else if (uShape > 2.5) {
+  } else if (uShape > 2.5 && uShape < 3.5) {
     float d = length(vP);
     a = clamp((0.5 - d) * uAA, 0.0, 1.0) * clamp((d - 0.40) * uAA, 0.0, 1.0);
   }
@@ -174,14 +189,17 @@ void main() {
 uniform mat4 uMVP;
 uniform mat4 uModel;
 uniform mat4 uNormalMat;
+uniform mat4 uLightVP;
 attribute vec3 aPos;
 attribute vec3 aNormal;
 attribute vec2 aUV;
 varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec2 vUV;
+varying vec4 vShadowPos;
 void main() {
   vWorld = (uModel * vec4(aPos, 1.0)).xyz;
+  vShadowPos = uLightVP * vec4(vWorld, 1.0);
   vNormal = (uNormalMat * vec4(aNormal, 0.0)).xyz;
   vUV = aUV;
   gl_Position = uMVP * vec4(aPos, 1.0);
@@ -189,16 +207,22 @@ void main() {
 """
 
         fun meshFs(effect: String) = """
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec2 vUV;
+varying vec4 vShadowPos;
 uniform vec4 uColor;
 uniform sampler2D uTex;
 uniform float uUseTex;
 uniform float uTiling;
 uniform vec3 uCamPos;
 uniform vec3 uAmbient;
+uniform vec3 uSkyColor;
 uniform vec3 uDirDir;
 uniform vec3 uDirColor;
 uniform vec4 uPointPos[4];
@@ -212,21 +236,50 @@ uniform vec3 uFog;
 uniform float uTime;
 uniform float uParam;
 uniform vec2 uResolution;
+uniform sampler2D uShadowMap;
+uniform vec4 uShadow;
+uniform float uGrade;
+float unpackDepth(vec4 c) { return dot(c, vec4(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0)); }
+float shadowFactor(vec3 n, vec3 l) {
+  if (uShadow.x < 0.5) return 1.0;
+  vec3 p = vShadowPos.xyz / vShadowPos.w * 0.5 + 0.5;
+  if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0 || p.z >= 1.0) return 1.0;
+  float bias = uShadow.z * (1.0 + 3.0 * (1.0 - clamp(dot(n, l), 0.0, 1.0)));
+  float s = 0.0;
+  if (uShadow.w > 0.5) {
+    for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) {
+      float d = unpackDepth(texture2D(uShadowMap, p.xy + vec2(float(x), float(y)) * uShadow.y));
+      s += (p.z - bias > d) ? 0.0 : 1.0;
+    }
+    s /= 9.0;
+  } else {
+    float d = unpackDepth(texture2D(uShadowMap, p.xy));
+    s = (p.z - bias > d) ? 0.0 : 1.0;
+  }
+  vec2 e = abs(p.xy - 0.5) * 2.0;
+  return mix(s, 1.0, smoothstep(0.85, 1.0, max(e.x, e.y)));
+}
 $effect
 void main() {
   vec4 base = uColor;
   vec2 uv = vUV * uTiling;
   if (uUseTex > 0.5) base *= texture2D(uTex, uv);
+  if (base.a < 0.02) discard;
   vec3 col = base.rgb;
   if (uUnlit < 0.5) {
     vec3 n = normalize(vNormal);
+    if (!gl_FrontFacing) n = -n;
     vec3 v = normalize(uCamPos - vWorld);
     vec3 l = normalize(-uDirDir);
     float diff = max(dot(n, l), 0.0);
+    float sh = diff > 0.0 ? shadowFactor(n, l) : 1.0;
     vec3 h = normalize(l + v);
     float spec = pow(max(dot(n, h), 0.0), uShine) * uSpec;
-    vec3 light = uAmbient + uDirColor * diff;
-    vec3 specular = uDirColor * spec * step(0.0001, diff);
+    // hemisphere ambient: sky tint from above, darker bounce from below
+    float hemi = n.y * 0.5 + 0.5;
+    vec3 amb = uAmbient * mix(vec3(0.55, 0.5, 0.45), mix(vec3(1.0), uSkyColor * 1.6, 0.35), hemi);
+    vec3 light = amb + uDirColor * diff * sh;
+    vec3 specular = uDirColor * spec * step(0.0001, diff) * sh;
     for (int i = 0; i < 4; i++) {
       vec3 d = uPointPos[i].xyz - vWorld;
       float dist = length(d);
@@ -237,12 +290,23 @@ void main() {
       light += uPointColor[i] * pd * att;
       specular += uPointColor[i] * pow(max(dot(n, normalize(pl + v)), 0.0), uShine) * uSpec * att * step(0.0001, pd);
     }
+    if (uGrade > 0.5) {
+      float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+      light += uSkyColor * rim * 0.25;
+    }
     col = col * light + specular;
   }
   col += base.rgb * uEmission;
   if (uFog.z > 0.5) {
     float f = clamp((length(uCamPos - vWorld) - uFog.x) / max(uFog.y - uFog.x, 0.001), 0.0, 1.0);
     col = mix(col, uFogColor, f);
+  }
+  if (uGrade > 0.5) {
+    // filmic tone mapping (ACES approximation) + gentle saturation
+    vec3 x = col * 1.1;
+    col = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+    float g = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(vec3(g), col, 1.12);
   }
   gl_FragColor = effect(vec4(col, base.a), uv);
 }

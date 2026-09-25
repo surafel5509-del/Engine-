@@ -43,6 +43,18 @@ class PlayerActivity : AppCompatActivity() {
         else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         val sceneName = intent.getStringExtra("scene") ?: project.startScene
         engine = Engine(project, project.loadScene(sceneName))
+        engine.platform = object : com.sengine.engine.Platform {
+            override fun vibrate(ms: Int) {
+                try {
+                    val v = getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                    v?.vibrate(android.os.VibrationEffect.createOneShot(ms.toLong().coerceIn(1, 2000), android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                } catch (_: Throwable) {}
+            }
+            override fun quit() { handler.post { finish() } }
+            override fun openUrl(url: String) { handler.post { try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) {} } }
+            override fun toast(text: String) { handler.post { android.widget.Toast.makeText(this@PlayerActivity, text, android.widget.Toast.LENGTH_SHORT).show() } }
+        }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         engine.listeners.add(object : Engine.Listener {
             override fun onLog(level: Int, message: String) {
                 if (level >= 2) handler.post { android.widget.Toast.makeText(this@PlayerActivity, message, android.widget.Toast.LENGTH_SHORT).show() }
@@ -57,7 +69,7 @@ class PlayerActivity : AppCompatActivity() {
         }
         glView.setOnTouchListener { v, e -> forwardTouch(v, e); true }
         root.addView(glView)
-        root.addView(GameControlsView(this) { engine.input })
+        root.addView(GameControlsView(this) { engine.input }.also { it.projectLayout = project.loadControls() })
         fpsText = label("", 11f, 0x99FFFFFF.toInt()).apply { setPadding(dp(10), dp(6), 0, 0) }
         if (!standalone) {
             root.addView(fpsText, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START))
@@ -72,11 +84,9 @@ class PlayerActivity : AppCompatActivity() {
     private fun forwardTouch(v: View, e: MotionEvent) {
         val inp = engine.input
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                inp.rawTouching = true; inp.rawTouchSX = e.x; inp.rawTouchSY = e.y; inp.tapPending = true
-            }
-            MotionEvent.ACTION_MOVE -> { inp.rawTouchSX = e.x; inp.rawTouchSY = e.y }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> inp.rawTouching = false
+            MotionEvent.ACTION_DOWN -> inp.touch(0, e.x, e.y)
+            MotionEvent.ACTION_MOVE -> inp.touch(1, e.x, e.y)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> inp.touch(2, e.x, e.y)
         }
     }
 

@@ -89,6 +89,12 @@ class View3D {
         return floatArrayOf((cx / cw * 0.5f + 0.5f) * widthPx, (1f - (cy / cw * 0.5f + 0.5f)) * heightPx)
     }
 
+    fun forward(): FloatArray {
+        val dx = target[0] - eye[0]; val dy = target[1] - eye[1]; val dz = target[2] - eye[2]
+        val l = sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-6f)
+        return floatArrayOf(dx / l, dy / l, dz / l)
+    }
+
     fun distanceTo(x: Float, y: Float, z: Float): Float {
         val dx = x - eye[0]; val dy = y - eye[1]; val dz = z - eye[2]
         return sqrt(dx * dx + dy * dy + dz * dz)

@@ -29,6 +29,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     private val wrappers = HashMap<Long, SObject>()
     private val compiled = HashMap<String, Script>()
     private val inputApi = SInput(engine)
+    val voxelApi = SVoxel(engine, this)
 
     val isRunning get() = cx != null
 
@@ -49,6 +50,11 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         put(g, "scene", SScene(engine, this))
         put(g, "audio", SAudio(engine))
         put(g, "console", SConsole(engine))
+        put(g, "storage", SStorage(engine))
+        put(g, "assets", SAssets(engine))
+        put(g, "ui", SUI(engine))
+        put(g, "platform", SPlatform(engine))
+        put(g, "voxel", voxelApi)
         c.evaluateString(g, PRELUDE, "prelude", 1, null)
         compiled.clear()
         for (go in engine.scene.objects.toList()) attach(go)
@@ -77,6 +83,24 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     fun toJs(go: GameObject?): Any? {
         val g = global ?: return null
         return if (go == null) null else Context.javaToJS(wrap(go), g)
+    }
+
+    /** Plain JS object from a map (values must already be JS-compatible). */
+    fun newObject(values: Map<String, Any?>): Scriptable? {
+        val c = cx ?: return null
+        val g = global ?: return null
+        val o = c.newObject(g)
+        for ((k, v) in values) ScriptableObject.putProperty(o, k, v)
+        return o
+    }
+
+    /** Calls [fname](arg) on every running script that defines it. */
+    fun broadcast(fname: String, arg: Any?) {
+        if (cx == null) return
+        for (inst in instances.toList()) {
+            if (inst.failed || !inst.started || inst.go.destroyed || !inst.go.isActiveInHierarchy()) continue
+            if (inst.scope.get(fname, inst.scope) is Function) call(inst, fname, arg)
+        }
     }
 
     fun newArray(items: List<Any?>): Scriptable? {
@@ -239,6 +263,15 @@ function random(a, b) { if (a === undefined) return Math.random(); return a + Ma
 function randomInt(a, b) { return Math.floor(random(a, b + 1)); }
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 function lerp(a, b, t) { return a + (b - a) * t; }
+function distance(x1, y1, x2, y2) { var dx = x2 - x1, dy = y2 - y1; return Math.sqrt(dx * dx + dy * dy); }
+function angleTo(x1, y1, x2, y2) { return Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI; }
+function moveTowardsValue(v, target, step) { return Math.abs(target - v) <= step ? target : v + Math.sign(target - v) * step; }
+function smoothDamp(v, target, speed, dt) { return v + (target - v) * (1 - Math.exp(-speed * dt)); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function chance(p) { return Math.random() < p; }
+function formatTime(sec) { sec = Math.max(0, sec); var m = Math.floor(sec / 60), s = sec - m * 60; return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2); }
+function loadJSON(name) { var t = assets.text(name); return t == null ? null : JSON.parse(String(t)); }
+var Block = { AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, SAND: 4, WATER: 5, WOOD: 6, LEAVES: 7, PLANKS: 8, BRICK: 9, GLASS: 10, COBBLE: 11, SNOW: 12, BEDROCK: 13, GOLD: 14 };
 var __timers = [];
 function after(sec, fn) { __timers.push({ t: time.time + sec, f: fn, every: 0 }); }
 function every(sec, fn) { __timers.push({ t: time.time + sec, f: fn, every: sec }); }

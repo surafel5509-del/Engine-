@@ -23,10 +23,33 @@ class Mesh(data: FloatArray) {
         }
         if (vertexCount == 0) { min.fill(-0.5f); max.fill(0.5f) }
     }
+
+    /** GPU vertex buffer (re-created automatically after a GL context loss). */
+    var vbo = 0
+    var vboGen = -1
+
+    /** Binds this mesh's VBO, uploading it first if needed. GL thread only. */
+    fun bind() {
+        if (vboGen != Meshes.contextGen || vbo == 0) {
+            val ids = IntArray(1)
+            android.opengl.GLES20.glGenBuffers(1, ids, 0)
+            vbo = ids[0]; vboGen = Meshes.contextGen
+            android.opengl.GLES20.glBindBuffer(android.opengl.GLES20.GL_ARRAY_BUFFER, vbo)
+            buffer.position(0)
+            android.opengl.GLES20.glBufferData(android.opengl.GLES20.GL_ARRAY_BUFFER, vertexCount * 32, buffer, android.opengl.GLES20.GL_STATIC_DRAW)
+        } else android.opengl.GLES20.glBindBuffer(android.opengl.GLES20.GL_ARRAY_BUFFER, vbo)
+    }
+
+    fun release() {
+        if (vbo != 0 && vboGen == Meshes.contextGen) android.opengl.GLES20.glDeleteBuffers(1, intArrayOf(vbo), 0)
+        vbo = 0; vboGen = -1
+    }
 }
 
 /** Procedural primitive meshes (unit sized, centred) and a Wavefront OBJ loader. */
 object Meshes {
+    /** Incremented whenever a new GL context is created; invalidates all VBO ids. */
+    @Volatile var contextGen = 0
     private val cache = HashMap<Int, Mesh>()
     private val models = HashMap<String, Pair<Long, Mesh?>>()
 
@@ -50,6 +73,27 @@ object Meshes {
         val m = try { loadObj(file.readText()) } catch (e: Exception) { null }
         models[key] = stamp to m
         return m
+    }
+
+    /** A loaded .smodel: per-part meshes grouped by colour plus rest-pose bounds. */
+    class ModelAsset(val model: com.sengine.engine.model.SModel, val parts: List<List<Pair<Int, Mesh>>>, val min: FloatArray, val max: FloatArray) {
+        val mats = Array(model.parts.size) { FloatArray(16) }
+        fun release() { parts.forEach { l -> l.forEach { it.second.release() } } }
+    }
+    private val smodels = HashMap<String, Pair<Long, ModelAsset?>>()
+
+    fun smodel(file: File): ModelAsset? {
+        val key = file.absolutePath
+        val stamp = file.lastModified()
+        smodels[key]?.let { if (it.first == stamp) return it.second }
+        smodels[key]?.second?.release()
+        val a = try {
+            val m = com.sengine.engine.model.SModel.parse(file.readText())
+            val (mn, mx) = m.bounds()
+            ModelAsset(m, m.parts.indices.map { i -> m.buildPart(i).map { (c, d) -> c to Mesh(d) } }, mn, mx)
+        } catch (e: Exception) { null }
+        smodels[key] = stamp to a
+        return a
     }
 
     private class B {

@@ -22,6 +22,25 @@ class Renderer2D {
     private val defaultUv = floatArrayOf(0f, 1f, 1f, 0f)
 
     var drawCalls = 0
+    /** Parameters for shape 4 (rounded rectangle): width/height ratio and corner radius in height units. */
+    var roundAspect = 1f
+    var roundRadius = 0f
+    private val rtmp = Affine()
+    private val rtmp2 = Affine()
+
+    /**
+     * Rounded rectangle of [w] x [h] local units placed by [m] (centre offset [ox],[oy] in local units).
+     * [radius] is in local units; [ppu] converts to pixels for anti-aliasing.
+     */
+    fun roundRect(m: Affine, ox: Float, oy: Float, w: Float, h: Float, radius: Float, color: Int, ppu: Float, tex: Tex? = null) {
+        if (w <= 0f || h <= 0f) return
+        rtmp2.a = w; rtmp2.b = 0f; rtmp2.c = 0f; rtmp2.d = h; rtmp2.tx = ox; rtmp2.ty = oy
+        rtmp.setMul(m, rtmp2)
+        val sx = m.scaleX; val sy = m.scaleY
+        roundAspect = (w * sx) / (h * sy).coerceAtLeast(1e-6f)
+        roundRadius = (radius / h).coerceAtLeast(0f)
+        quad(rtmp, color, if (radius > 0f || tex == null) 4 else 0, tex, h * sy * ppu)
+    }
     var time = 0f
     var resW = 1f
     var resH = 1f
@@ -72,6 +91,7 @@ class Renderer2D {
         if (p.uTime >= 0) GLES20.glUniform1f(p.uTime, time)
         if (p.uParam >= 0) GLES20.glUniform1f(p.uParam, param)
         if (p.uResolution >= 0) GLES20.glUniform2f(p.uResolution, resW, resH)
+        if (p.uRound >= 0) GLES20.glUniform3f(p.uRound, roundAspect, roundRadius, 0f)
         if (tex != null) {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, tex.id)

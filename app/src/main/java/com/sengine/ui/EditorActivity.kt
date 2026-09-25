@@ -333,6 +333,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         for ((tool, b) in toolButtons) b.setButtonColor(if (tool == t) C.ACCENT else C.PANEL2)
     }
 
+    private var lastUiMode = Engine.Mode.EDIT
+
     private fun updateModeUi() {
         val m = engine.mode
         playBtn.text = if (m == Engine.Mode.EDIT) "▶" else "■"
@@ -341,7 +343,9 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         stepBtn.alpha = if (m == Engine.Mode.PAUSED) 1f else 0.4f
         toolbar.setBackgroundColor(if (m == Engine.Mode.EDIT) C.HEADER else 0xFF1D2E45.toInt())
         controls.visibility = if (m == Engine.Mode.EDIT) View.GONE else View.VISIBLE
-        controls.reset()
+        if (m == Engine.Mode.PLAY && lastUiMode == Engine.Mode.EDIT) controls.projectLayout = project.loadControls()
+        if (m != Engine.Mode.PAUSED) controls.reset()
+        lastUiMode = m
         if (m == Engine.Mode.EDIT) { refreshHierarchy(); inspector.rebuild() }
         updateTitle()
     }
@@ -724,7 +728,9 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             AssetKind.SOUND -> { pm.menu.add("Preview"); if (sel != null) pm.menu.add("Add AudioSource to ${sel.name}") }
             AssetKind.SHADER -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Use shader on ${sel.name}") }
             AssetKind.ANIMATION -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Play on ${sel.name}") }
-            AssetKind.MODEL -> { pm.menu.add("Create 3D Model Object"); if (sel != null) pm.menu.add("Use model on ${sel.name}") }
+            AssetKind.MODEL -> { if (name.endsWith(".smodel")) pm.menu.add("Edit"); pm.menu.add("Create 3D Model Object"); if (sel != null) pm.menu.add("Use model on ${sel.name}") }
+            AssetKind.SONG -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Add AudioSource to ${sel.name}") }
+            AssetKind.DATA -> pm.menu.add("Edit")
             null -> {}
         }
         pm.menu.add("Delete")

@@ -30,7 +30,7 @@ object GameRuntime {
             copyAssetDir(ctx, "game/project", dir)
             stampFile.writeText(stamp)
         }
-        cached = Project(dir)
+        cached = Project(dir).also { it.saveDir = File(File(ctx.filesDir, "gamesaves"), name) }
         return cached
     }
 

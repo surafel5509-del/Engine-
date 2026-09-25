@@ -52,14 +52,39 @@ class GameObject(var id: Long, var name: String) {
 
     fun computeWorld(): Affine {
         val local = localMatrix()
-        val p = parent ?: return local
+        val p = parent ?: return applyAnchor(local)
         return Affine().setMul(p.computeWorld(), local)
+    }
+
+    /** Screen anchor of a root UI object (0 = centre / none). */
+    fun uiAnchor(): Int {
+        for (c in components) {
+            val a = when (c) {
+                is UIPanel -> c.anchor
+                is UIButton -> c.anchor
+                is UIProgress -> c.anchor
+                is SpriteRenderer -> if (c.screenSpace) c.anchor else 0
+                is TextRenderer -> if (c.screenSpace) c.anchor else 0
+                else -> 0
+            }
+            if (a != 0) return a
+        }
+        return 0
+    }
+
+    /** Offsets a root object's world matrix by its UI anchor (UI canvas half-size from [Scene.uiHalfW]). */
+    fun applyAnchor(m: Affine): Affine {
+        val a = uiAnchor()
+        if (a != 0) { val (ox, oy) = anchorOffset(a, Scene.uiHalfW, 5f); m.tx += ox; m.ty += oy }
+        return m
     }
 
     fun setWorldPosition(wx: Float, wy: Float) {
         val p = parent
         if (p == null) {
-            x = wx; y = wy
+            val a = uiAnchor()
+            val (ox, oy) = if (a != 0) anchorOffset(a, Scene.uiHalfW, 5f) else (0f to 0f)
+            x = wx - ox; y = wy - oy
         } else {
             val inv = p.computeWorld().inverted() ?: return
             x = inv.mapX(wx, wy); y = inv.mapY(wx, wy)

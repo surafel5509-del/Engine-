@@ -4,6 +4,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class Scene(var name: String) {
+    companion object {
+        /** Half width of the UI canvas (its half height is 5); follows the game view aspect. */
+        @Volatile @JvmStatic var uiHalfW = 5f * 16f / 9f
+    }
+
     val objects = mutableListOf<GameObject>()
     var gravityX = 0f
     var gravityY = -9.81f
@@ -61,7 +66,7 @@ class Scene(var name: String) {
         for ((go, _) in hierarchy()) {
             val p = go.parent
             if (p == null) {
-                go.localMatrix(go.world)
+                go.localMatrix(go.world); go.applyAnchor(go.world)
                 go.localMatrix3(go.world3)
             } else {
                 go.world.setMul(p.world, go.localMatrix())

@@ -45,6 +45,15 @@ class Engine(val project: Project, initialScene: Scene) {
     val scripts = ScriptSystem(this)
     val audio = AudioSystem(project)
     val gameView = View2D()
+    val ui = UISystem(this)
+    val storage by lazy { Storage(java.io.File(project.saveDir, "storage.json")) }
+    /** Host hooks (vibrate / quit / links); set by the player activity. */
+    @Volatile var platform: Platform? = null
+    /** Game speed multiplier (0 pauses gameplay while UI keeps working). */
+    var timeScale = 1f
+    var unscaledTime = 0.0; private set
+    var deltaTime = 0f; private set
+    @Volatile var culledObjects = 0
 
     var time = 0.0; private set
     var frame = 0L; private set
@@ -118,7 +127,9 @@ class Engine(val project: Project, initialScene: Scene) {
     }
 
     private fun beginScene() {
+        timeScale = 1f
         for (go in scene.objects) for (c in go.components) c.resetRuntime()
+        prepareVoxels(true)
         physics.reset()
         physics3D.reset()
         audio.start()
@@ -162,16 +173,19 @@ class Engine(val project: Project, initialScene: Scene) {
 
         when (mode) {
             Mode.PLAY -> runFrame(dt)
-            Mode.EDIT -> { scene.updateTransforms(); updateParticles(dt); updateAnimators(dt, false) }
+            Mode.EDIT -> { scene.updateTransforms(); updateParticles(dt); updateAnimators(dt, false); prepareVoxels(false); updateModelAnims(dt) }
             Mode.PAUSED -> scene.updateTransforms()
         }
     }
 
     private fun runFrame(dt0: Float) {
-        val dt = dt0.coerceAtMost(0.1f)
-        time += dt; frame++
+        val raw = dt0.coerceAtMost(0.1f)
+        val dt = raw * timeScale.coerceIn(0f, 10f)
+        deltaTime = dt
+        time += dt; unscaledTime += raw; frame++
         scene.updateTransforms()
         updateGameView()
+        ui.process()
         input.beginFrame(gameView)
         val t0 = System.nanoTime()
         scripts.update(dt)
@@ -188,6 +202,8 @@ class Engine(val project: Project, initialScene: Scene) {
         updateGameView()
         updateParticles(dt)
         updateAnimators(dt, true)
+        updateModelAnims(dt)
+        prepareVoxels(false)
         decayShake(dt)
 
         val load = pendingSceneLoad
@@ -217,6 +233,29 @@ class Engine(val project: Project, initialScene: Scene) {
         var p = go.parent
         while (p != null) { if (p.destroyed) return true; p = p.parent }
         return false
+    }
+
+    /** Creates voxel data for VoxelWorld objects and rebuilds a few dirty chunk meshes per frame. */
+    private fun prepareVoxels(all: Boolean) {
+        for (go in scene.objects) {
+            val vw = go.get<com.sengine.engine.core.VoxelWorld>() ?: continue
+            if (!go.isActiveInHierarchy()) continue
+            var d = vw.data
+            val key = vw.genKey()
+            if (d == null || vw.dataKey != key) {
+                d = com.sengine.engine.voxel.VoxelData.create(vw)
+                vw.data = d; vw.dataKey = key
+            }
+            d.rebuildDirty(if (all) Int.MAX_VALUE else 3)
+        }
+    }
+
+    private fun updateModelAnims(dt: Float) {
+        for (go in scene.objects) {
+            val mr = go.get<com.sengine.engine.core.MeshRenderer>() ?: continue
+            if (mr.playingAnim.isBlank() && mr.animation.isBlank()) continue
+            mr.animTime += dt * mr.animSpeed
+        }
     }
 
     fun mainCamera3D(): GameObject? = scene.objects.firstOrNull { it.isActiveInHierarchy() && it.get<com.sengine.engine.core.Camera3D>() != null }
@@ -273,6 +312,7 @@ class Engine(val project: Project, initialScene: Scene) {
     }
 
     fun updateGameView() {
+        if (gameView.widthPx > 1 && gameView.heightPx > 1) com.sengine.engine.core.Scene.uiHalfW = 5f * gameView.widthPx / gameView.heightPx
         val camGo = mainCamera()
         if (camGo == null) {
             gameView.cx = 0f; gameView.cy = 0f; gameView.size = 5f

@@ -13,6 +13,10 @@ import com.sengine.engine.core.MeshRenderer
 import com.sengine.engine.core.ParticleEmitter
 import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.core.TextRenderer
+import com.sengine.engine.core.UIButton
+import com.sengine.engine.core.UIPanel
+import com.sengine.engine.core.UIProgress
+import com.sengine.engine.core.VoxelWorld
 import com.sengine.engine.math.Affine
 import com.sengine.engine.math.Mat4
 import javax.microedition.khronos.egl.EGLConfig
@@ -46,6 +50,8 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     private val rnd = java.util.Random()
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        Meshes.contextGen++
+        voxelMeshes.clear()
         shaders.init()
         r.init(shaders)
         r3.init(shaders)
@@ -57,6 +63,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         this.width = width; this.height = height
         GLES20.glViewport(0, 0, width, height)
+        com.sengine.engine.core.Scene.uiHalfW = 5f * width / height.coerceAtLeast(1)
         engine.gameView.widthPx = width; engine.gameView.heightPx = height
         editor?.view?.let { it.widthPx = width; it.heightPx = height }
         editor?.view3D?.let { it.widthPx = width; it.heightPx = height }
@@ -123,7 +130,15 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             if (ui && !editing) continue
             drawObject2D(go, ppu, null)
         }
-        if (editing) drawEditorOverlay(view, editor!!)
+        if (editing) {
+            if (engine.scene.objects.any { isScreenSpace(it) }) {
+                val hw = com.sengine.engine.core.Scene.uiHalfW
+                val c = 0x88FFD33D.toInt()
+                r.line(-hw, -5f, hw, -5f, c); r.line(hw, -5f, hw, 5f, c); r.line(hw, 5f, -hw, 5f, c); r.line(-hw, 5f, -hw, -5f, c)
+                r.flushLines(1.5f)
+            }
+            drawEditorOverlay(view, editor!!)
+        }
     }
 
     private fun sortedObjects(): List<GameObject> =
@@ -133,18 +148,21 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             .map { it.value }
 
     private fun isScreenSpace(go: GameObject): Boolean =
-        go.get<SpriteRenderer>()?.screenSpace == true || go.get<TextRenderer>()?.screenSpace == true
+        go.get<SpriteRenderer>()?.screenSpace == true || go.get<TextRenderer>()?.screenSpace == true ||
+            go.get<UIPanel>() != null || go.get<UIButton>() != null || go.get<UIProgress>() != null
 
     /** Draws sprite / text / particles of [go]. When [m3] is given the object is placed in 3D with that matrix. */
     private fun drawObject2D(go: GameObject, ppu: Float, m3: FloatArray?) {
         val w = go.world
+        if (m3 == null) drawUI(go, w, ppu)
         go.get<SpriteRenderer>()?.let { sr ->
             val texName = sr.animTexture ?: sr.texture
             val tex = if (texName.isNotBlank()) textures.image(texName) else null
             val prog = if (sr.shader.isNotBlank()) shaders.sprite(sr.shader) else null
             val shape = if (tex != null) 0 else sr.shape
-            if (m3 != null) r.quadModel(m3, sr.color, shape, tex, 200f, sr.flipX, sr.flipY, sr.uv, prog, sr.shaderParam)
-            else r.quad(w, sr.color, shape, tex, min(w.scaleX, w.scaleY) * ppu, sr.flipX, sr.flipY, sr.uv, prog, sr.shaderParam)
+            val uv = sr.uv ?: if (tex != null && (sr.tileX != 1f || sr.tileY != 1f)) tileUv(sr.tileX, sr.tileY) else null
+            if (m3 != null) r.quadModel(m3, sr.color, shape, tex, 200f, sr.flipX, sr.flipY, uv, prog, sr.shaderParam)
+            else r.quad(w, sr.color, shape, tex, min(w.scaleX, w.scaleY) * ppu, sr.flipX, sr.flipY, uv, prog, sr.shaderParam)
         }
         go.get<TextRenderer>()?.let { tr ->
             if (tr.text.isNotEmpty()) {
@@ -189,6 +207,50 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         return (ch(24) shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
     }
 
+    private val tileBuf = FloatArray(4)
+    private fun tileUv(tx: Float, ty: Float): FloatArray { tileBuf[0] = 0f; tileBuf[1] = ty; tileBuf[2] = tx; tileBuf[3] = 0f; return tileBuf }
+
+    /** Game UI components (panel, button, progress bar). */
+    private fun drawUI(go: GameObject, w: Affine, ppu: Float) {
+        go.get<UIPanel>()?.let { p ->
+            val tex = if (p.texture.isNotBlank()) textures.image(p.texture) else null
+            if (p.border > 0f && GL.a(p.borderColor) > 0f)
+                r.roundRect(w, 0f, 0f, p.width + p.border * 2, p.height + p.border * 2, p.corner + p.border, p.borderColor, ppu)
+            r.roundRect(w, 0f, 0f, p.width, p.height, p.corner, p.color, ppu, tex)
+        }
+        go.get<UIProgress>()?.let { p ->
+            r.roundRect(w, 0f, 0f, p.width, p.height, p.corner * minOf(p.width, p.height), p.backColor, ppu)
+            val v = p.value.coerceIn(0f, 1f)
+            if (v > 0.001f) {
+                val inset = minOf(p.width, p.height) * 0.12f
+                if (p.vertical) {
+                    val hh = (p.height - inset * 2) * v; val ww = p.width - inset * 2
+                    r.roundRect(w, 0f, -p.height / 2 + inset + hh / 2, ww, hh, p.corner * minOf(ww, hh), p.fillColor, ppu)
+                } else {
+                    val ww = (p.width - inset * 2) * v; val hh = p.height - inset * 2
+                    r.roundRect(w, -p.width / 2 + inset + ww / 2, 0f, ww, hh, p.corner * minOf(ww, hh), p.fillColor, ppu)
+                }
+            }
+        }
+        go.get<UIButton>()?.let { b ->
+            val tex = if (b.texture.isNotBlank()) textures.image(b.texture) else null
+            val scale = if (b.pressed) 0.95f else 1f
+            val base = if (!b.interactable) (b.color and 0x00FFFFFF) or 0x66000000 else if (b.pressed) b.pressedColor else b.color
+            // soft drop shadow + body + top highlight
+            r.roundRect(w, 0f, -b.height * 0.06f, b.width * scale, b.height * scale, b.corner * b.height * scale, 0x40000000, ppu)
+            r.roundRect(w, 0f, 0f, b.width * scale, b.height * scale, b.corner * b.height * scale, base, ppu, tex)
+            if (tex == null) r.roundRect(w, 0f, b.height * 0.2f * scale, b.width * scale * 0.94f, b.height * 0.42f * scale, b.corner * b.height * 0.42f * scale, 0x1FFFFFFF, ppu)
+            if (b.text.isNotEmpty()) {
+                val t = textures.text(b.text, true, 1)
+                val hh = b.textSize * scale
+                val ww = hh * t.w / t.h
+                tmp2.a = ww; tmp2.b = 0f; tmp2.c = 0f; tmp2.d = hh; tmp2.tx = 0f; tmp2.ty = 0f
+                tmp.setMul(w, tmp2)
+                r.quad(tmp, b.textColor, 0, t, 100f)
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ Screen-space UI
 
     private fun drawScreenUI(editing: Boolean, use3D: Boolean) {
@@ -221,22 +283,48 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 v.setFromWorld(camGo.world3, target?.let { floatArrayOf(it[12], it[13], it[14]) }, jx, jy)
             }
         }
+        val settings = cam ?: engine.mainCamera3D()?.get<Camera3D>()
+        val quality = settings?.quality ?: 2
+        r3.grade = quality >= 3
+        r3.sunDisc = settings?.sunDisc ?: true
+        r3.setSkyColor(settings?.skyTop ?: 0xFF3B7BD4.toInt())
+        r3.setupLights(scene, v)
+
+        // gather opaque / transparent draw items
+        itemCount = 0
+        val objs = sortedObjects()
+        val transparent = ArrayList<Pair<Float, GameObject>>()
+        val casters = ArrayList<Pair<Mesh, FloatArray>>()
+        for (go in objs) {
+            val mr = go.get<MeshRenderer>() ?: continue
+            if (GL.a(mr.color) < 0.999f) { transparent.add(v.distanceTo(go.world3[12], go.world3[13], go.world3[14]) to go); continue }
+            val start = itemCount
+            collectMesh(go, mr)
+            if (mr.castShadows) for (i in start until itemCount) casters.add(items[i].mesh!! to items[i].model)
+        }
+        val voxelStart = itemCount
+        collectVoxels(scene)
+        for (i in voxelStart until itemCount) casters.add(items[i].mesh!! to items[i].model)
+
+        val wantShadows = (settings?.shadows ?: true) && quality >= 1
+        if (wantShadows) r3.renderShadows(casters, quality, settings?.shadowDistance ?: 40f, width, height)
+        else r3.renderShadows(emptyList(), 0, 0f, width, height)
+
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        r3.drawSky(v, cam?.skyTop ?: 0xFF3B7BD4.toInt(), cam?.skyHorizon ?: 0xFFBFD8F0.toInt())
+        r3.drawSky(v, cam?.skyTop ?: settings?.skyTop ?: 0xFF3B7BD4.toInt(), cam?.skyHorizon ?: settings?.skyHorizon ?: 0xFFBFD8F0.toInt())
 
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
         GLES20.glDepthFunc(GLES20.GL_LEQUAL)
         GLES20.glDepthMask(true)
-        r3.setupLights(scene, v)
-
-        val objs = sortedObjects()
-        val transparent = ArrayList<Pair<Float, GameObject>>()
-        for (go in objs) {
-            val mr = go.get<MeshRenderer>() ?: continue
-            if (GL.a(mr.color) < 0.999f) { transparent.add(v.distanceTo(go.world3[12], go.world3[13], go.world3[14]) to go); continue }
-            drawMesh(go, mr)
+        culled = 0
+        for (i in 0 until itemCount) {
+            val it = items[i]
+            val mesh = it.mesh ?: continue
+            if (!r3.visible(mesh, it.model)) { culled++; continue }
+            r3.drawMesh(mesh, it.model, it.mr!!, it.tex, it.prog, it.color)
         }
+        engine.culledObjects = culled
         // transparent meshes, sprites, text & particles: back to front, no depth writes
         GLES20.glDepthMask(false)
         for (go in objs) {
@@ -247,7 +335,11 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         r.begin(v.viewProj)
         for ((_, go) in transparent.sortedByDescending { it.first }) {
             val mr = go.get<MeshRenderer>()
-            if (mr != null) drawMesh(go, mr) else drawObject2D(go, 100f, go.world3)
+            if (mr != null) {
+                val start = itemCount
+                collectMesh(go, mr)
+                for (i in start until itemCount) { val it = items[i]; r3.drawMesh(it.mesh!!, it.model, mr, it.tex, it.prog, it.color) }
+            } else drawObject2D(go, 100f, go.world3)
         }
         GLES20.glDepthMask(true)
 
@@ -255,23 +347,85 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
     }
 
-    private fun drawMesh(go: GameObject, mr: MeshRenderer) {
-        val mesh = if (mr.mesh == MeshRenderer.MESHES.size - 1) {
-            (if (mr.model.isNotBlank()) Meshes.model(engine.project.assetFile(mr.model)) else null) ?: Meshes.primitive(0)
-        } else Meshes.primitive(mr.mesh)
+    private class DrawItem { var mesh: Mesh? = null; val model = FloatArray(16); var mr: MeshRenderer? = null; var tex: Tex? = null; var prog: MeshProgram? = null; var color = 0 }
+    private val items = ArrayList<DrawItem>()
+    private var itemCount = 0
+    private var culled = 0
+
+    private fun addItem(mesh: Mesh, model: FloatArray, mr: MeshRenderer, tex: Tex?, prog: MeshProgram?, color: Int = 0) {
+        if (itemCount == items.size) items.add(DrawItem())
+        val it = items[itemCount++]
+        it.mesh = mesh; System.arraycopy(model, 0, it.model, 0, 16); it.mr = mr; it.tex = tex; it.prog = prog; it.color = color
+    }
+
+    private fun isSModel(mr: MeshRenderer) = mr.mesh == MeshRenderer.MESHES.size - 1 && mr.model.endsWith(".smodel", true)
+
+    /** Adds the draw items for a mesh renderer (one per part/colour for .smodel models). */
+    private fun collectMesh(go: GameObject, mr: MeshRenderer) {
         val tex = if (mr.texture.isNotBlank()) textures.image(mr.texture) else null
         val prog = if (mr.shader.isNotBlank()) shaders.mesh(mr.shader) else null
-        r3.drawMesh(mesh, go.world3, mr, tex, prog)
+        if (isSModel(mr)) {
+            val asset = Meshes.smodel(engine.project.assetFile(mr.model)) ?: return
+            val clip = asset.model.clip(mr.playingAnim.ifBlank { mr.animation })
+            asset.model.matrices(clip, mr.animTime, asset.mats)
+            for ((i, groups) in asset.parts.withIndex()) {
+                if (!asset.model.parts[i].visible) continue
+                Mat4.mul(m4, go.world3, asset.mats[i])
+                for ((color, mesh) in groups) addItem(mesh, m4, mr, tex, prog, color)
+            }
+            return
+        }
+        addItem(meshOf(mr), go.world3, mr, tex, prog)
+    }
+
+    private fun meshOf(mr: MeshRenderer): Mesh = if (mr.mesh == MeshRenderer.MESHES.size - 1) {
+        (if (mr.model.isNotBlank() && !isSModel(mr)) Meshes.model(engine.project.assetFile(mr.model)) else null) ?: Meshes.primitive(0)
+    } else Meshes.primitive(mr.mesh)
+
+    // ------------------------------------------------------------------ voxel worlds
+    private class VoxelGpu(val data: com.sengine.engine.voxel.VoxelData) {
+        val meshes = arrayOfNulls<Mesh>(data.meshes.size)
+        val stamps = IntArray(data.meshes.size) { -1 }
+    }
+    private val voxelMeshes = HashMap<Long, VoxelGpu>()
+    private val voxelMr = MeshRenderer().apply { specular = 0.04f; shininess = 8f; color = -1 }
+
+    private fun collectVoxels(scene: com.sengine.engine.core.Scene) {
+        val alive = HashSet<Long>()
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val vw = go.get<VoxelWorld>() ?: continue
+            if (!vw.enabled) continue
+            val data = vw.data ?: continue
+            alive.add(go.id)
+            var gpu = voxelMeshes[go.id]
+            if (gpu == null || gpu.data !== data) { gpu?.meshes?.forEach { it?.release() }; gpu = VoxelGpu(data); voxelMeshes[go.id] = gpu }
+            val tex = if (vw.texture.isNotBlank()) textures.image(vw.texture) else textures.generated("voxel_atlas", true) { com.sengine.engine.voxel.VoxelAtlas.create() }
+            val w = go.world3
+            val t = Mat4.identity(m4b); t[12] = w[12]; t[13] = w[13]; t[14] = w[14]
+            for (i in data.meshes.indices) {
+                if (gpu.stamps[i] != data.meshStamp[i]) {
+                    gpu.meshes[i]?.release()
+                    val d = data.meshes[i]
+                    gpu.meshes[i] = if (d != null && d.isNotEmpty()) Mesh(d) else null
+                    gpu.stamps[i] = data.meshStamp[i]
+                }
+                val mesh = gpu.meshes[i] ?: continue
+                addItem(mesh, t, voxelMr, tex, null)
+            }
+        }
+        val dead = voxelMeshes.keys.filter { it !in alive }
+        for (k in dead) { voxelMeshes.remove(k)?.meshes?.forEach { it?.release() } }
     }
 
     private fun meshBounds(go: GameObject): Pair<FloatArray, FloatArray> {
         val mr = go.get<MeshRenderer>()
         if (mr != null) {
-            val mesh = if (mr.mesh == MeshRenderer.MESHES.size - 1) {
-                (if (mr.model.isNotBlank()) Meshes.model(engine.project.assetFile(mr.model)) else null) ?: Meshes.primitive(0)
-            } else Meshes.primitive(mr.mesh)
+            if (isSModel(mr)) Meshes.smodel(engine.project.assetFile(mr.model))?.let { return it.min to it.max }
+            val mesh = meshOf(mr)
             return mesh.min to mesh.max
         }
+        go.get<VoxelWorld>()?.let { vw -> return floatArrayOf(0f, 0f, 0f) to floatArrayOf(vw.chunksX * 16f, vw.height.toFloat(), vw.chunksZ * 16f) }
         return floatArrayOf(-0.5f, -0.5f, -0.05f) to floatArrayOf(0.5f, 0.5f, 0.05f)
     }
 

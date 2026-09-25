@@ -253,4 +253,52 @@ class PhysicsWorld {
         }
         return null
     }
+
+    class RayHit2D(val go: GameObject, val x: Float, val y: Float, val nx: Float, val ny: Float, val distance: Float)
+
+    /** Casts a ray (unit direction) against 2D colliders (triggers ignored unless [triggers]); nearest hit or null. */
+    fun raycast(scene: Scene, ox: Float, oy: Float, dx: Float, dy: Float, maxDist: Float, ignore: GameObject? = null, triggers: Boolean = false, tag: String = ""): RayHit2D? {
+        var best: RayHit2D? = null
+        var bestT = maxDist
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy() || go === ignore || go.destroyed) continue
+            val col = go.get<Collider2D>() ?: continue
+            if (col.isTrigger && !triggers) continue
+            if (tag.isNotEmpty() && go.tag != tag) continue
+            val b = Body(go, null, col)
+            refresh(b)
+            if (b.isCircle) {
+                val fx = ox - b.cx; val fy = oy - b.cy
+                val bq = fx * dx + fy * dy
+                val c = fx * fx + fy * fy - b.r * b.r
+                val disc = bq * bq - c
+                if (disc < 0f) continue
+                var t = -bq - kotlin.math.sqrt(disc)
+                if (t < 0f) t = if (c < 0f) 0f else continue
+                if (t < bestT) {
+                    bestT = t
+                    val hx = ox + dx * t; val hy = oy + dy * t
+                    val l = kotlin.math.sqrt((hx - b.cx) * (hx - b.cx) + (hy - b.cy) * (hy - b.cy)).coerceAtLeast(1e-6f)
+                    best = RayHit2D(go, hx, hy, (hx - b.cx) / l, (hy - b.cy) / l, t)
+                }
+            } else {
+                var tmin = 0f; var tmax = bestT
+                var nx = 0f; var ny = 0f
+                var ok = true
+                for (axis in 0..1) {
+                    val o = if (axis == 0) ox else oy; val d = if (axis == 0) dx else dy
+                    val lo = if (axis == 0) b.cx - b.hw else b.cy - b.hh; val hi = if (axis == 0) b.cx + b.hw else b.cy + b.hh
+                    if (abs(d) < 1e-8f) { if (o < lo || o > hi) { ok = false; break }; continue }
+                    var t1 = (lo - o) / d; var t2 = (hi - o) / d
+                    var sgn = -1f
+                    if (t1 > t2) { val tt = t1; t1 = t2; t2 = tt; sgn = 1f }
+                    if (t1 > tmin) { tmin = t1; if (axis == 0) { nx = sgn; ny = 0f } else { nx = 0f; ny = sgn } }
+                    if (t2 < tmax) tmax = t2
+                    if (tmin > tmax) { ok = false; break }
+                }
+                if (ok && tmin < bestT) { bestT = tmin; best = RayHit2D(go, ox + dx * tmin, oy + dy * tmin, nx, ny, tmin) }
+            }
+        }
+        return best
+    }
 }

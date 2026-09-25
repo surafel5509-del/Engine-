@@ -19,7 +19,13 @@ class TextureCache(private val project: Project) {
     private val stamps = HashMap<String, Long>()
     private val texts = LinkedHashMap<String, Tex>(64, 0.75f, true)
 
-    fun clear() { images.clear(); stamps.clear(); texts.clear() }
+    private val generated = HashMap<String, Tex>()
+
+    fun clear() { images.clear(); stamps.clear(); texts.clear(); generated.clear() }
+
+    /** A procedurally generated texture, created once per GL context. */
+    fun generated(key: String, nearest: Boolean, make: () -> Bitmap): Tex =
+        generated.getOrPut(key) { val b = make(); upload(b, nearest).also { b.recycle() } }
 
     fun image(name: String): Tex? {
         if (name.isBlank()) return null
@@ -76,8 +82,10 @@ class TextureCache(private val project: Project) {
         val filter = if (nearest) GLES20.GL_NEAREST else GLES20.GL_LINEAR
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, filter)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, filter)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        val pot = (bmp.width and (bmp.width - 1)) == 0 && (bmp.height and (bmp.height - 1)) == 0
+        val wrap = if (pot) GLES20.GL_REPEAT else GLES20.GL_CLAMP_TO_EDGE
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, wrap)
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, wrap)
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
         return Tex(ids[0], bmp.width, bmp.height)
     }

@@ -26,6 +26,7 @@ class AudioSystem(private val project: Project) {
         val p = SoundPool.Builder().setMaxStreams(12).setAudioAttributes(attrs).build()
         pool = p
         for (name in project.listAssets(AssetKind.SOUND)) {
+            if (project.assetFile(name).length() > 1_200_000) continue // long tracks stream via playMusic
             try {
                 ids[name] = p.load(project.assetFile(name).absolutePath, 1)
             } catch (_: Exception) {
@@ -33,10 +34,10 @@ class AudioSystem(private val project: Project) {
         }
     }
 
-    fun play(name: String, volume: Float = 1f, loop: Boolean = false): Int {
+    fun play(name: String, volume: Float = 1f, loop: Boolean = false, rate: Float = 1f): Int {
         val p = pool ?: return 0
         val id = ids[name] ?: return 0
-        val s = p.play(id, volume, volume, 1, if (loop) -1 else 0, 1f)
+        val s = try { p.play(id, volume * sfxVolume, volume * sfxVolume, 1, if (loop) -1 else 0, rate.coerceIn(0.5f, 2f)) } catch (_: Throwable) { 0 }
         if (s != 0) streams.add(s)
         return s
     }
@@ -49,6 +50,44 @@ class AudioSystem(private val project: Project) {
         }
     }
 
+    /** Master volumes (0..1) usable from scripts and game settings menus. */
+    var sfxVolume = 1f
+    var musicVolume = 1f
+        set(v) { field = v.coerceIn(0f, 1f); try { music?.setVolume(musicBase * field, musicBase * field) } catch (_: Throwable) {} }
+    private var music: android.media.MediaPlayer? = null
+    private var musicName = ""
+    private var musicBase = 1f
+
+    /** Streams a long sound (wav/ogg/mp3) as background music. */
+    fun playMusic(name: String, volume: Float = 1f, loop: Boolean = true) {
+        if (name == musicName && music != null) { musicBase = volume; musicVolume = musicVolume; return }
+        stopMusic()
+        val f = project.assetFile(name)
+        if (!f.exists()) return
+        try {
+            val mp = android.media.MediaPlayer()
+            mp.setDataSource(f.absolutePath)
+            mp.isLooping = loop
+            musicBase = volume
+            mp.setVolume(volume * musicVolume, volume * musicVolume)
+            mp.prepare(); mp.start()
+            music = mp; musicName = name
+        } catch (_: Throwable) { music = null; musicName = "" }
+    }
+
+    fun stopMusic() {
+        try { music?.stop(); music?.release() } catch (_: Throwable) {}
+        music = null; musicName = ""
+    }
+
+    fun pauseMusic(paused: Boolean) { try { if (paused) music?.pause() else music?.start() } catch (_: Throwable) {} }
+
+    fun stopStream(stream: Int) { try { pool?.stop(stream) } catch (_: Throwable) {}; streams.remove(stream) }
+
+    fun setRate(stream: Int, rate: Float) { try { pool?.setRate(stream, rate.coerceIn(0.5f, 2f)) } catch (_: Throwable) {} }
+
+    fun setVolume(stream: Int, v: Float) { try { pool?.setVolume(stream, v * sfxVolume, v * sfxVolume) } catch (_: Throwable) {} }
+
     fun stopAll() {
         val p = pool ?: return
         try { for (s in streams) p.stop(s) } catch (_: Throwable) {}
@@ -57,6 +96,7 @@ class AudioSystem(private val project: Project) {
 
     fun stop() {
         stopAll()
+        stopMusic()
         try { pool?.release() } catch (_: Throwable) {}
         pool = null
         ids.clear()

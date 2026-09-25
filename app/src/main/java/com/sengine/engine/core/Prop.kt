@@ -6,7 +6,9 @@ enum class AssetKind(val extensions: List<String>) {
     SOUND(listOf("wav", "ogg", "mp3", "m4a")),
     SHADER(listOf("glsl")),
     ANIMATION(listOf("anim")),
-    MODEL(listOf("obj"));
+    MODEL(listOf("obj", "smodel")),
+    SONG(listOf("song")),
+    DATA(listOf("json", "txt", "csv"));
 
     companion object {
         fun of(fileName: String): AssetKind? {
