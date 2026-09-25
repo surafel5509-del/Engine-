@@ -116,10 +116,6 @@ class Camera2D : Component() {
         Prop.Choice("Post FX", ComponentRegistry.POST_FX, { postFx }, { postFx = it }),
         Prop.F("FX Intensity", { postIntensity }, { postIntensity = it.coerceIn(0f, 4f) }, 0.05f),
         Prop.Asset("FX Shader", AssetKind.SHADER, { postShader }, { postShader = it }),
-        Prop.B("Shadows", { shadows }, { shadows = it }),
-        Prop.F("Shadow Distance", { shadowDistance }, { shadowDistance = it.coerceIn(5f, 300f) }, 1f),
-        Prop.B("Sun Disc", { sunDisc }, { sunDisc = it }),
-        Prop.Choice("Quality", listOf("Low", "Medium", "High", "Ultra"), { quality }, { quality = it }),
     )
 
     override fun resetRuntime() { shake = 0f }
@@ -356,6 +352,10 @@ class Camera3D : Component() {
         Prop.Choice("Post FX", ComponentRegistry.POST_FX, { postFx }, { postFx = it }),
         Prop.F("FX Intensity", { postIntensity }, { postIntensity = it.coerceIn(0f, 4f) }, 0.05f),
         Prop.Asset("FX Shader", AssetKind.SHADER, { postShader }, { postShader = it }),
+        Prop.B("Shadows", { shadows }, { shadows = it }),
+        Prop.F("Shadow Distance", { shadowDistance }, { shadowDistance = it.coerceIn(5f, 300f) }, 1f),
+        Prop.B("Sun Disc", { sunDisc }, { sunDisc = it }),
+        Prop.Choice("Quality", listOf("Low", "Medium", "High", "Ultra"), { quality }, { quality = it }),
     )
 
     override fun resetRuntime() { shake = 0f }

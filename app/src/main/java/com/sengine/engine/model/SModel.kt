@@ -234,7 +234,7 @@ class SModel(val parts: MutableList<SPart> = ArrayList(), val clips: MutableList
 
         fun faceCenter(p: SPart, f: IntArray): FloatArray {
             val c = FloatArray(3); for (i in f) for (k in 0 until 3) c[k] += p.verts[i][k]
-            for (k in 0 until 3) c[k] /= f.size.coerceAtLeast(1); return c
+            val n = f.size.coerceAtLeast(1).toFloat(); for (k in 0 until 3) c[k] = c[k] / n; return c
         }
 
         private fun dominant(n: FloatArray): Int {
