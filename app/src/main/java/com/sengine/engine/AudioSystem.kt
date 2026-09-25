@@ -35,6 +35,7 @@ class AudioSystem(private val project: Project) {
     }
 
     fun play(name: String, volume: Float = 1f, loop: Boolean = false, rate: Float = 1f): Int {
+        if (name.endsWith(".song")) { playMusic(name, volume, loop); return 0 }
         val p = pool ?: return 0
         val id = ids[name] ?: return 0
         val s = try { p.play(id, volume * sfxVolume, volume * sfxVolume, 1, if (loop) -1 else 0, rate.coerceIn(0.5f, 2f)) } catch (_: Throwable) { 0 }
@@ -62,7 +63,7 @@ class AudioSystem(private val project: Project) {
     fun playMusic(name: String, volume: Float = 1f, loop: Boolean = true) {
         if (name == musicName && music != null) { musicBase = volume; musicVolume = musicVolume; return }
         stopMusic()
-        val f = project.assetFile(name)
+        val f = if (name.endsWith(".song")) songWav(name, loop) ?: return else project.assetFile(name)
         if (!f.exists()) return
         try {
             val mp = android.media.MediaPlayer()
@@ -73,6 +74,21 @@ class AudioSystem(private val project: Project) {
             mp.prepare(); mp.start()
             music = mp; musicName = name
         } catch (_: Throwable) { music = null; musicName = "" }
+    }
+
+    /** Renders a .song (S Engine music editor file) to a cached WAV, re-rendered when the song changes. */
+    fun songWav(name: String, loop: Boolean = true): java.io.File? {
+        val src = project.assetFile(name)
+        if (!src.exists()) return null
+        return try {
+            val dir = java.io.File(project.dir, ".cache").apply { mkdirs() }
+            val out = java.io.File(dir, name.replace('/', '_') + (if (loop) ".loop" else "") + ".wav")
+            if (!out.exists() || out.lastModified() < src.lastModified()) {
+                val song = com.sengine.engine.audio.Song.parse(src.readText())
+                out.writeBytes(com.sengine.engine.audio.Song.wav(song.render(1, tail = !loop)))
+            }
+            out
+        } catch (_: Throwable) { null }
     }
 
     fun stopMusic() {

@@ -15,18 +15,23 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 object C {
-    const val BG = 0xFF1E1F22.toInt()
-    const val PANEL = 0xFF2B2D31.toInt()
-    const val PANEL2 = 0xFF383A40.toInt()
-    const val HEADER = 0xFF232428.toInt()
-    const val FIELD = 0xFF1A1B1E.toInt()
-    const val ACCENT = 0xFF4C8DFF.toInt()
-    const val TEXT = 0xFFE6E6E6.toInt()
-    const val DIM = 0xFF9AA0A6.toInt()
-    const val SEL = 0xFF34507F.toInt()
-    const val RED = 0xFFE5534B.toInt()
-    const val GREEN = 0xFF57AB5A.toInt()
-    const val YELLOW = 0xFFE0B341.toInt()
+    const val BG = 0xFF0E1120.toInt()
+    const val PANEL = 0xFF161A2D.toInt()
+    const val PANEL2 = 0xFF232A47.toInt()
+    const val HEADER = 0xFF111427.toInt()
+    const val FIELD = 0xFF0A0D19.toInt()
+    const val ACCENT = 0xFF5B7CFF.toInt()
+    const val ACCENT2 = 0xFF22D3EE.toInt()
+    const val TEXT = 0xFFE8EAF6.toInt()
+    const val DIM = 0xFF8F96B8.toInt()
+    const val SEL = 0xFF2E3A78.toInt()
+    const val RED = 0xFFFF5C6C.toInt()
+    const val GREEN = 0xFF34D399.toInt()
+    const val YELLOW = 0xFFFBBF24.toInt()
+    const val ORANGE = 0xFFFF9F43.toInt()
+    const val PURPLE = 0xFFA78BFA.toInt()
+    const val PINK = 0xFFF472B6.toInt()
+    const val BORDER = 0xFF2A3154.toInt()
 }
 
 fun Context.dp(v: Number): Int =
@@ -55,14 +60,14 @@ fun Context.button(text: String, color: Int = C.PANEL2, textColor: Int = C.TEXT,
         gravity = Gravity.CENTER
         setPadding(dp(12), dp(6), dp(12), dp(6))
         minWidth = dp(40)
-        background = RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), round(color, dp(6).toFloat()), null)
+        background = RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), round(color, dp(8).toFloat()), null)
         isClickable = true
         isFocusable = true
         setOnClickListener(onClick)
     }
 
 fun TextView.setButtonColor(color: Int) {
-    background = RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), round(color, context.dp(6).toFloat()), null)
+    background = RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), round(color, context.dp(8).toFloat()), null)
 }
 
 fun Context.field(value: String, numeric: Boolean = false, multiline: Boolean = false): EditText =
@@ -71,7 +76,7 @@ fun Context.field(value: String, numeric: Boolean = false, multiline: Boolean = 
         setTextColor(C.TEXT)
         textSize = 13f
         setPadding(dp(6), dp(4), dp(6), dp(4))
-        background = round(C.FIELD, dp(4).toFloat(), 1, 0xFF3A3C42.toInt())
+        background = round(C.FIELD, dp(6).toFloat(), 1, C.BORDER)
         inputType = when {
             numeric -> InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
             multiline -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
@@ -99,3 +104,51 @@ fun fmt(v: Float): String {
     if (v == Math.round(v).toFloat() && kotlin.math.abs(v) < 1e7) return Math.round(v).toString()
     return String.format(java.util.Locale.US, "%.3f", v).trimEnd('0').trimEnd('.')
 }
+
+/** Left-to-right gradient rounded rectangle. */
+fun gradient(c1: Int, c2: Int, radius: Float, orientation: GradientDrawable.Orientation = GradientDrawable.Orientation.TL_BR): GradientDrawable =
+    GradientDrawable(orientation, intArrayOf(c1, c2)).apply { cornerRadius = radius }
+
+/** Square icon button with ripple, tooltip and accessibility description. */
+fun Context.iconButton(icon: String, desc: String, tint: Int = C.TEXT, bg: Int = C.PANEL2, sizeDp: Int = 40, onClick: (View) -> Unit): android.widget.ImageView =
+    android.widget.ImageView(this).apply {
+        setImageDrawable(Icons.drawable(this@iconButton, icon, tint, (sizeDp * 0.55f).toInt()))
+        scaleType = android.widget.ImageView.ScaleType.CENTER
+        contentDescription = desc
+        tooltipText = desc
+        background = RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), round(bg, dp(10).toFloat()), null)
+        isClickable = true; isFocusable = true
+        setOnClickListener(onClick)
+        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+    }
+
+fun android.widget.ImageView.setIconTint(icon: String, tint: Int, sizeDp: Int = 22) {
+    setImageDrawable(Icons.drawable(context, icon, tint, sizeDp))
+}
+
+fun android.widget.ImageView.setBg(bg: Int) {
+    background = RippleDrawable(ColorStateList.valueOf(0x44FFFFFF), round(bg, context.dp(10).toFloat()), null)
+}
+
+/** Button with a leading icon and a label. */
+fun Context.iconTextButton(icon: String, text: String, color: Int = C.PANEL2, tint: Int = C.TEXT, onClick: (View) -> Unit): TextView =
+    button(text, color, tint, onClick).apply {
+        setCompoundDrawables(Icons.drawable(this@iconTextButton, icon, tint, 18), null, null, null)
+        compoundDrawablePadding = dp(6)
+        textSize = 13f
+    }
+
+/** Rounded card container. */
+fun Context.card(color: Int = C.PANEL, radiusDp: Int = 14): LinearLayout = vbox().apply {
+    background = round(color, dp(radiusDp).toFloat(), 1, C.BORDER)
+    setPadding(dp(12), dp(10), dp(12), dp(10))
+}
+
+/** Small section header with an icon. */
+fun Context.sectionHeader(icon: String, text: String, tint: Int = C.ACCENT2): TextView =
+    label(text.uppercase(), 11f, C.DIM, true).apply {
+        setCompoundDrawables(Icons.drawable(this@sectionHeader, icon, tint, 14), null, null, null)
+        compoundDrawablePadding = dp(6)
+        letterSpacing = 0.08f
+        setPadding(dp(4), dp(10), dp(4), dp(4))
+    }

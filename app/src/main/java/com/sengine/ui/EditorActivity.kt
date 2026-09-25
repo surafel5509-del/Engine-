@@ -138,6 +138,17 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         engine = Engine(project, scene)
         history = History(engine)
         engine.listeners.add(engineListener)
+        engine.platform = object : com.sengine.engine.Platform {
+            override fun vibrate(ms: Int) {
+                try {
+                    val v = getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                    v?.vibrate(android.os.VibrationEffect.createOneShot(ms.toLong().coerceIn(1, 2000), android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                } catch (_: Throwable) {}
+            }
+            override fun quit() { runOnUiThread { toast("game.quit() — ignored in the editor") } }
+            override fun openUrl(url: String) { runOnUiThread { try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) {} } }
+            override fun toast(text: String) { runOnUiThread { this@EditorActivity.toast(text) } }
+        }
         buildUi()
         synchronized(engine.lock) {
             scene.updateTransforms()
@@ -289,6 +300,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         assetButtons.addView(button("+ Blueprint") { newAssetDialog("New Blueprint", "NewBlueprint", "bp", { com.sengine.engine.blueprint.Blueprint.defaultGraph().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Shader") { newAssetDialog("New Shader", "NewShader", "glsl", { Templates.NEW_SHADER }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Animation") { newAssetDialog("New Animation", "NewAnimation", "anim", { com.sengine.engine.anim.AnimationClip().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("+ Song") { newAssetDialog("New Song", "Theme", "song", { MusicEditorActivity.newSongJson(it.substringBeforeLast('.')) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("+ 3D Model") { newAssetDialog("New 3D Model", "MyModel", "smodel", { ModelEditorActivity.newModelJson() }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("Import Model") { importKind = AssetKind.MODEL; importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("Import Image") { importKind = AssetKind.TEXTURE; importLauncher.launch(arrayOf("image/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("Import Sound") { importKind = AssetKind.SOUND; importLauncher.launch(arrayOf("audio/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
@@ -379,6 +392,9 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     override fun openScript(name: String) {
         when (AssetKind.of(name)) {
             AssetKind.ANIMATION -> openAnimationEditor(name)
+            AssetKind.SONG -> { saveScene(silent = true); startActivity(Intent(this, MusicEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name)) }
+            AssetKind.MODEL -> if (name.endsWith(".smodel")) { saveScene(silent = true); startActivity(Intent(this, ModelEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name)) }
+                else toast("OBJ models are read-only — create a .smodel to edit in the Model Editor")
             else -> if (name.endsWith(".bp")) startActivity(Intent(this, BlueprintEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name))
                 else startActivity(Intent(this, ScriptEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name))
         }

@@ -15,11 +15,12 @@ object AxmlPatcher {
     private const val RES_XML_START_ELEMENT = 0x0102
     private const val UTF8_FLAG = 1 shl 8
     private const val TYPE_STRING = 0x03
+    private const val TYPE_REFERENCE = 0x01
     private const val TYPE_INT_DEC = 0x10
 
     class Result(val bytes: ByteArray, val strings: List<String>)
 
-    fun patch(axml: ByteArray, oldPkg: String, newPkg: String, label: String?, versionName: String?, versionCode: Int?): Result {
+    fun patch(axml: ByteArray, oldPkg: String, newPkg: String, label: String?, versionName: String?, versionCode: Int?, iconRes: Int? = null): Result {
         val bb = ByteBuffer.wrap(axml).order(ByteOrder.LITTLE_ENDIAN)
         require(bb.getShort(0).toInt() == 0x0003) { "Not a binary XML file" }
         val poolStart = bb.getShort(2).toInt() and 0xFFFF
@@ -92,6 +93,9 @@ object AxmlPatcher {
                     val attrName = strings.getOrNull(rb.getInt(ap + 4)) ?: ""
                     if (elName == "application" && attrName == "label" && labelIdx >= 0) setString(rb, ap, labelIdx)
                     if (elName == "manifest" && attrName == "versionName" && versionIdx >= 0) setString(rb, ap, versionIdx)
+                    if (elName == "application" && (attrName == "icon" || attrName == "roundIcon") && iconRes != null) {
+                        rb.putInt(ap + 8, -1); rb.put(ap + 15, TYPE_REFERENCE.toByte()); rb.putInt(ap + 16, iconRes)
+                    }
                     if (elName == "manifest" && attrName == "versionCode" && versionCode != null) {
                         rb.putInt(ap + 8, -1); rb.put(ap + 15, TYPE_INT_DEC.toByte()); rb.putInt(ap + 16, versionCode)
                     }

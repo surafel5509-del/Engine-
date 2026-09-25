@@ -65,6 +65,30 @@
             android:windowSoftInputMode="adjustPan"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
+        <activity
+            android:name=".ui.MusicEditorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
+            android:name=".ui.ModelEditorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
+            android:name=".ui.ControlsEditorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
+            android:name=".ui.HelpActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

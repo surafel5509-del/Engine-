@@ -39,9 +39,16 @@ class PlayerActivity : AppCompatActivity() {
         val standalone = intent.getBooleanExtra("standalone", false)
         val project = intent.getStringExtra("projectDir")?.let { com.sengine.project.Project(java.io.File(it)) }
             ?: ProjectManager.open(this, intent.getStringExtra("project") ?: run { finish(); return })
-        requestedOrientation = if (project.orientation == 1) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        val sceneName = intent.getStringExtra("scene") ?: project.startScene
+        val opts = if (standalone) com.sengine.export.GameRuntime.buildInfo(this) ?: org.json.JSONObject() else org.json.JSONObject()
+        requestedOrientation = when (opts.optString("orientation", "")) {
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            "sensor" -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            else -> if (project.orientation == 1) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        fullscreen = opts.optBoolean("fullscreen", true)
+        val startOverride = opts.optString("startScene", "").takeIf { it.isNotBlank() && project.sceneExists(it) }
+        val sceneName = intent.getStringExtra("scene") ?: startOverride ?: project.startScene
         engine = Engine(project, project.loadScene(sceneName))
         engine.platform = object : com.sengine.engine.Platform {
             override fun vibrate(ms: Int) {
@@ -54,7 +61,7 @@ class PlayerActivity : AppCompatActivity() {
             override fun openUrl(url: String) { handler.post { try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) {} } }
             override fun toast(text: String) { handler.post { android.widget.Toast.makeText(this@PlayerActivity, text, android.widget.Toast.LENGTH_SHORT).show() } }
         }
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (opts.optBoolean("keepScreenOn", true)) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         engine.listeners.add(object : Engine.Listener {
             override fun onLog(level: Int, message: String) {
                 if (level >= 2) handler.post { android.widget.Toast.makeText(this@PlayerActivity, message, android.widget.Toast.LENGTH_SHORT).show() }
@@ -76,6 +83,8 @@ class PlayerActivity : AppCompatActivity() {
             root.addView(button("✕", 0x55000000) { finish() },
                 FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(8), dp(8), 0) })
         }
+        if (standalone && opts.optBoolean("showFps", false)) root.addView(fpsText, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START))
+        if (standalone && opts.optBoolean("splash", true)) addSplash(root, opts)
         setContentView(root)
         hideSystemUi()
         engine.play()
@@ -90,7 +99,30 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private var fullscreen = true
+
+    /** Branded splash overlay for exported games (icon, title, "Made with S Engine"), fades out. */
+    private fun addSplash(root: FrameLayout, opts: org.json.JSONObject) {
+        val splash = vbox().apply {
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(opts.optInt("splashColor", 0xFF0E1120.toInt()), 0xFF000000.toInt()))
+            isClickable = true
+        }
+        val icon = android.widget.ImageView(this).apply {
+            try { setImageResource(com.sengine.R.mipmap.ic_game) } catch (_: Throwable) {}
+        }
+        splash.addView(icon, android.widget.LinearLayout.LayoutParams(dp(110), dp(110)))
+        splash.addView(label(opts.optString("name", "Game"), 26f, C.TEXT, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(4)) })
+        val sub = opts.optString("splashText", "").ifBlank { "Made with S Engine" }
+        splash.addView(label(sub, 13f, C.DIM).apply { gravity = Gravity.CENTER })
+        root.addView(splash, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val ms = (opts.optDouble("splashSeconds", 1.8) * 1000).toLong().coerceIn(300, 8000)
+        handler.postDelayed({ splash.animate().alpha(0f).setDuration(450).withEndAction { root.removeView(splash) }.start() }, ms)
+    }
+
     private fun hideSystemUi() {
+        if (!fullscreen) return
         if (android.os.Build.VERSION.SDK_INT >= 30) {
             window.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())

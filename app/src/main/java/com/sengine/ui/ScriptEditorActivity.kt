@@ -233,6 +233,7 @@ LIFECYCLE (define any of these)
   onTrigger(other)     entered a trigger
   onTriggerExit(other) left a trigger
   onTap()              object's collider tapped
+  onUIClick(name)      a UI button was clicked
   onDestroy() / onStop()
 
 SELF  (self / transform / gameObject)
@@ -265,9 +266,23 @@ SELF  (self / transform / gameObject)
   hasComponent(type)
   setComponentEnabled(type, b)
 
+  setProp(type, label, v) getProp(type, label)
+  lookAt(o | x,y | x,y,z) moveTowards(x,y,step)
+  right() wake() isSleeping()
+  playModelAnim("Walk") stopModelAnim()
+  modelAnim setModelAnimSpeed(s)
+  UI: value (progress) label interactable
+      isPressed()
+
 INPUT
   axisX axisY (-1..1)  a b aDown bDown
   touching tapped touchX touchY (world)
+  screenX screenY  axis2X axis2Y (aim stick)
+  lookX lookY      (look pad drag, pixels)
+  button("Fire") buttonDown(id) buttonUp(id)
+  stickX("aim") stickY("aim")
+  setControls("Racing" | "project" | "none")
+  showControls(bool)
 
 SCENE
   find(name) findAll(tag) count(tag)
@@ -281,15 +296,49 @@ SCENE
      -> {object, x, y, z, distance} | null
   getCamera3D() gravity3D
 
-TIME   time.time time.frame time.fps
-AUDIO  audio.play("file.wav") audio.beep()
-       audio.stopAll()
+  raycastHit(...) -> {object,x,y,z,nx,ny,nz,distance}
+  raycast2D(ox,oy,dx,dy,max[,tag])
+  findInRadius(tag,x,y,r) nearest(tag,x,y)
+  nearest3(tag,x,y,z)
+
+TIME   time.time time.frame time.fps time.dt
+       time.scale (0 = pause, 0.5 = slow-mo)
+AUDIO  audio.play("file.wav"[,vol[,pitch]])
+       audio.loop(name, vol) -> stream
+       audio.stop(stream) audio.setPitch(s,p)
+       audio.playMusic("theme.song" | ".wav")
+       audio.stopMusic() musicVolume sfxVolume
+       audio.beep() audio.stopAll()
+
+UI     ui.click(name) ui.show(n) ui.hide(n)
+       ui.toggle(n) ui.setText(n, t)
+       ui.setProgress(n, 0..1)
+       UIButton actions: scene:Name; show:Obj;
+       hide:Obj; toggle:Obj; call:fn; pause;
+       resume; reload; quit; url:https://..
+STORAGE storage.set(k, v) storage.get(k[,def])
+       storage.getNumber(k, def) has(k)
+       remove(k) clear()   (saved per game)
+ASSETS assets.text(name) assets.exists(name)
+       loadJSON("levels.json")
+PLATFORM platform.vibrate(ms) platform.toast(t)
+       platform.openUrl(u) platform.quit()
+       platform.standalone
+VOXEL  voxel.ready getBlock(x,y,z)
+       setBlock(x,y,z,id) surfaceY(x,z)
+       raycast(x,y,z,dx,dy,dz,max)
+       blockName(id) blockCount sizeX/Y/Z
+       save(name) load(name) hasSave(name)
 
 HELPERS
   log(...) warn(m) error(m)
   after(sec, fn) every(sec, fn)
   random(a,b) randomInt(a,b)
   clamp(v,a,b) lerp(a,b,t)
+  distance(x1,y1,x2,y2) angleTo(...)
+  moveTowardsValue(v,t,step)
+  smoothDamp(v,t,speed,dt) pick(arr)
+  chance(p) formatTime(sec)
 
 PARAMS  "speed=5, jump=10" in the Script
         component become variables.

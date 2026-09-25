@@ -12,6 +12,14 @@ class GameBuildConfig(
     val packageName: String,
     val versionName: String,
     val versionCode: Int,
+    /** Replacement PNG for the game icon (null = keep the S Engine icon). */
+    val iconPng: ByteArray? = null,
+    /** Resource id of the PNG mipmap that receives [iconPng] (R.mipmap.ic_game). */
+    val iconResId: Int = 0,
+    /** Zip entry path of that mipmap inside the runtime APK, e.g. res/mipmap-xxxhdpi-v4/ic_game.png. */
+    val iconEntry: String? = null,
+    /** Extra runtime options written to build.json (orientation, fullscreen, splash, keepScreenOn, startScene…). */
+    val options: JSONObject = JSONObject(),
 )
 
 /**
@@ -57,6 +65,7 @@ object ApkBuilder {
         progress("Reading S Engine runtime…", 0.02f)
         ZipFile(sourceApk).use { zip ->
             val entries = zip.entries().toList().filter { !it.isDirectory }
+            val hasIcon = cfg.iconPng != null && cfg.iconResId != 0 && cfg.iconEntry != null && entries.any { it.name == cfg.iconEntry }
             entriesFile.outputStream().buffered(1 shl 16).use { os ->
                 writer = ZipWriter(os)
                 entries.forEachIndexed { i, e ->
@@ -65,8 +74,10 @@ object ApkBuilder {
                     var data = zip.getInputStream(e).use { it.readBytes() }
                     if (name == "AndroidManifest.xml") {
                         progress("Patching manifest…", 0.05f)
-                        data = AxmlPatcher.patch(data, SOURCE_PACKAGE, cfg.packageName, cfg.appName, cfg.versionName, cfg.versionCode).bytes
+                        data = AxmlPatcher.patch(data, SOURCE_PACKAGE, cfg.packageName, cfg.appName, cfg.versionName, cfg.versionCode,
+                            if (hasIcon) cfg.iconResId else null).bytes
                     }
+                    if (hasIcon && name == cfg.iconEntry) data = cfg.iconPng!!
                     val stored = e.method == ZipEntry.STORED || name == "resources.arsc"
                     writer.add(name, data, compress = !stored, align = if (name.endsWith(".so")) 4096 else 4)
                     if (i % 20 == 0) progress("Packing runtime ($i/${entries.size})…", 0.05f + 0.6f * i / entries.size)
@@ -83,6 +94,7 @@ object ApkBuilder {
                     .put("name", cfg.appName).put("package", cfg.packageName)
                     .put("versionName", cfg.versionName).put("versionCode", cfg.versionCode)
                     .put("project", projectDir.name).put("builtAt", System.currentTimeMillis())
+                for (k in cfg.options.keys()) info.put(k, cfg.options.get(k))
                 writer.add(GAME_ASSETS + "build.json", info.toString(2).toByteArray(), compress = true)
             }
         }
