@@ -8,7 +8,9 @@ import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.model.ModelOps
 import com.sengine.engine.model.ModelPresets
 import com.sengine.engine.model.SModel
+import com.sengine.project.AssetLibrary
 import com.sengine.project.GameDoctor
+import com.sengine.project.ScriptRecipes
 import com.sengine.project.Project
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -156,5 +158,25 @@ class EngineV3ToolsTest {
         assertTrue(after.none { it.startsWith("Start scene missing") || it.contains("has no camera") || it.startsWith("Missing texture") || it.contains("without collider") })
         assertTrue(p.loadScene("Main").objects.any { it.getAny<Camera2D>() != null })
         assertTrue(after.any { it.startsWith("Script error") })
+    }
+
+    @Test
+    fun recipesCompileAndFullEditionItemsInstall() {
+        for (r in ScriptRecipes.all) assertNull("${r.file}", GameDoctor.syntaxError(r.code, r.file))
+        val dir = Files.createTempDirectory("store3").toFile()
+        val p = Project(File(dir, "Store3")); p.saveMeta()
+        val cats = setOf("Music", "3D Models", "Sounds", "Scripts")
+        for (item in AssetLibrary.items.filter { it.category in cats }) {
+            item.install(p)
+            assertTrue("${item.title} installed", item.installed(p))
+        }
+        val song = Song.parse(p.readAsset("RacingRush.song")!!)
+        assertTrue(song.tracks.isNotEmpty())
+        val car = SModel.parse(p.readAsset("Car.smodel")!!)
+        assertTrue(car.parts.size > 3)
+        val titles = AssetLibrary.items.map { it.title }
+        assertEquals("unique titles", titles.size, titles.toSet().size)
+        assertTrue(AssetLibrary.items.count { it.category == "Packs" } >= 11)
+        println("SIM store items v3=${AssetLibrary.items.size}")
     }
 }

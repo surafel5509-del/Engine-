@@ -141,7 +141,7 @@ class HelpActivity : AppCompatActivity() {
         showRecipe(HelpContent.recipes[0])
     }
 
-    private fun showRecipe(r: HelpContent.Recipe) {
+    private fun showRecipe(r: com.sengine.project.ScriptRecipes.Recipe) {
         content.removeAllViews()
         content.addView(label(r.title, 24f, C.TEXT, true))
         content.addView(label(r.description, 14f, C.DIM).apply { setPadding(0, dp(4), 0, dp(10)) })

@@ -79,11 +79,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private lateinit var tabConsole: TextView
     private lateinit var tabAssets: TextView
     private lateinit var assetButtons: LinearLayout
-    private lateinit var playBtn: TextView
-    private lateinit var pauseBtn: TextView
-    private lateinit var stepBtn: TextView
-    private lateinit var modeBtn: TextView
-    private val toolButtons = HashMap<Tool, TextView>()
+    private lateinit var playBtn: android.widget.ImageView
+    private lateinit var pauseBtn: android.widget.ImageView
+    private lateinit var stepBtn: android.widget.ImageView
+    private lateinit var modeBtn: android.widget.ImageView
+    private val toolButtons = HashMap<Tool, android.widget.ImageView>()
 
     private val handler = Handler(Looper.getMainLooper())
     private var lastObjectCount = -1
@@ -164,7 +164,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         inspector.rebuild()
         refreshAssets()
         updateModeUi()
-        appendConsole(0, "S Engine Ultimate 2.0 — project '${project.name}', scene '${scene.name}'")
+        appendConsole(0, "S Engine Full Edition 3.0 — project '${project.name}', scene '${scene.name}'")
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -206,33 +206,38 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         toolbar = hbox().apply { setPadding(dp(4), dp(3), dp(4), dp(3)) }
         val tb = toolbar
         fun sep() = tb.addView(View(this).apply { setBackgroundColor(0xFF45474D.toInt()) }, lp(dp(1), dp(22)).margins(dp(5), 0, dp(5), 0))
-        fun tbtn(t: String, onClick: (View) -> Unit): TextView {
-            val b = button(t, C.PANEL2, C.TEXT, onClick).apply { textSize = 15f; setPadding(dp(10), dp(5), dp(10), dp(5)) }
-            tb.addView(b, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        fun ibtn(icon: String, desc: String, onClick: (View) -> Unit): android.widget.ImageView {
+            val b = iconButton(icon, desc, C.TEXT, C.PANEL2, 36, onClick)
+            tb.addView(b, lp(dp(36), dp(36)).margins(dp(2), 0, dp(2), 0))
             return b
         }
-        tbtn("←") { onBackPressedDispatcher.onBackPressed() }
+        ibtn("back", "Back to projects") { onBackPressedDispatcher.onBackPressed() }
         titleText = label("", 13f, C.TEXT, true).apply { setPadding(dp(6), 0, dp(6), 0); maxWidth = dp(160); isSingleLine = true }
         tb.addView(titleText)
         sep()
-        tbtn("☰") { toggle(hierarchyPanel) }
-        for ((tool, glyph) in listOf(Tool.HAND to "✋", Tool.MOVE to "✥", Tool.ROTATE to "⟳", Tool.SCALE to "⤢")) {
-            toolButtons[tool] = tbtn(glyph) { setTool(tool) }
+        ibtn("layers", "Hierarchy") { toggle(hierarchyPanel) }
+        for ((tool, icon) in listOf(Tool.HAND to "cursor", Tool.MOVE to "move", Tool.ROTATE to "rotate", Tool.SCALE to "scale")) {
+            toolButtons[tool] = ibtn(icon, tool.name.lowercase().replaceFirstChar { it.uppercase() } + " tool") { setTool(tool) }
         }
-        modeBtn = tbtn("2D") { toggle3D() }
-        tbtn("📊") { state.showProfiler = !state.showProfiler }
+        modeBtn = ibtn("cube", "Switch 2D / 3D view") { toggle3D() }
+        ibtn("chart", "Profiler") { state.showProfiler = !state.showProfiler }
         sep()
-        playBtn = tbtn("▶") { if (engine.mode == Engine.Mode.EDIT) startPlay() else engine.stop() }
-        pauseBtn = tbtn("⏸") { if (engine.mode == Engine.Mode.PAUSED) engine.play() else engine.pause() }
-        stepBtn = tbtn("⏭") { engine.stepFrame() }
+        playBtn = ibtn("play", "Play / Stop") { if (engine.mode == Engine.Mode.EDIT) startPlay() else engine.stop() }
+        pauseBtn = ibtn("pause", "Pause") { if (engine.mode == Engine.Mode.PAUSED) engine.play() else engine.pause() }
+        stepBtn = ibtn("step", "Step one frame") { engine.stepFrame() }
         sep()
-        tbtn("↶") { undo() }
-        tbtn("↷") { redo() }
+        ibtn("undo", "Undo") { undo() }
+        ibtn("redo", "Redo") { redo() }
         sep()
-        tbtn("＋") { addObjectMenu(it) }
-        tbtn("💾") { saveScene() }
-        tbtn("⋮") { mainMenu(it) }
-        tbtn("▤") { toggle(inspectorPanel) }
+        ibtn("plus", "Add object") { addObjectMenu(it) }
+        ibtn("save", "Save scene") { saveScene() }
+        ibtn("store", "Asset Store") { startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name)) }
+        ibtn("gamepad", "Controls Editor") { saveScene(silent = true); startActivity(Intent(this, ControlsEditorActivity::class.java).putExtra("project", project.name)) }
+        ibtn("doctor", "Game Doctor") { saveScene(silent = true); openHelp("doctor") }
+        ibtn("rocket", "Build APK") { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
+        ibtn("help", "Help Center") { openHelp(null) }
+        ibtn("more", "More") { mainMenu(it) }
+        ibtn("sliders", "Inspector") { toggle(inspectorPanel) }
         val tbScroll = HorizontalScrollView(this).apply { addView(tb); isHorizontalScrollBarEnabled = false; setBackgroundColor(C.HEADER) }
         root.addView(tbScroll, lp(MATCH, WRAP))
 
@@ -343,16 +348,16 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
     private fun setTool(t: Tool) {
         state.tool = t
-        for ((tool, b) in toolButtons) b.setButtonColor(if (tool == t) C.ACCENT else C.PANEL2)
+        for ((tool, b) in toolButtons) b.setBg(if (tool == t) C.ACCENT else C.PANEL2)
     }
 
     private var lastUiMode = Engine.Mode.EDIT
 
     private fun updateModeUi() {
         val m = engine.mode
-        playBtn.text = if (m == Engine.Mode.EDIT) "▶" else "■"
-        playBtn.setButtonColor(if (m == Engine.Mode.EDIT) C.PANEL2 else C.GREEN)
-        pauseBtn.setButtonColor(if (m == Engine.Mode.PAUSED) C.YELLOW else C.PANEL2)
+        playBtn.setIconTint(if (m == Engine.Mode.EDIT) "play" else "stop", C.TEXT, 20)
+        playBtn.setBg(if (m == Engine.Mode.EDIT) C.PANEL2 else C.GREEN)
+        pauseBtn.setBg(if (m == Engine.Mode.PAUSED) C.YELLOW else C.PANEL2)
         stepBtn.alpha = if (m == Engine.Mode.PAUSED) 1f else 0.4f
         toolbar.setBackgroundColor(if (m == Engine.Mode.EDIT) C.HEADER else 0xFF1D2E45.toInt())
         controls.visibility = if (m == Engine.Mode.EDIT) View.GONE else View.VISIBLE
@@ -477,7 +482,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     // ================================================================== object creation
     private fun toggle3D() {
         state.mode3D = !state.mode3D
-        modeBtn.text = if (state.mode3D) "3D" else "2D"
+        modeBtn.setIconTint(if (state.mode3D) "cube" else "image", C.TEXT, 20)
         if (state.mode3D) synchronized(engine.lock) { controller.frame(engine.scene.findById(state.selectedId)) }
     }
 
@@ -586,10 +591,16 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     }
 
     // ================================================================== menus & scenes
+    private fun openHelp(topic: String?) {
+        val i = Intent(this, HelpActivity::class.java).putExtra("project", project.name)
+        if (topic != null) i.putExtra("topic", topic)
+        startActivity(i)
+    }
+
     private fun mainMenu(anchor: View) {
         val pm = PopupMenu(this, anchor)
         val entries = listOf(
-            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "Asset Store", "Animation Editor", "Export Project (.zip)",
+            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "Asset Store", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
             (if (state.showProfiler) "Hide" else "Show") + " Profiler",
             (if (state.showGrid) "Hide" else "Show") + " Grid",
             (if (state.showColliders) "Hide" else "Show") + " Colliders",
@@ -606,6 +617,12 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Build APK…" -> { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
                 t == "Asset Store" -> startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name))
                 t == "Animation Editor" -> openAnimationEditor(null)
+                t == "Music Editor" -> { saveScene(silent = true); startActivity(Intent(this, MusicEditorActivity::class.java).putExtra("project", project.name)) }
+                t == "3D Model Editor" -> { saveScene(silent = true); startActivity(Intent(this, ModelEditorActivity::class.java).putExtra("project", project.name)) }
+                t == "Controls Editor" -> { saveScene(silent = true); startActivity(Intent(this, ControlsEditorActivity::class.java).putExtra("project", project.name)) }
+                t == "Game Doctor" -> { saveScene(silent = true); openHelp("doctor") }
+                t == "Help Center" -> openHelp(null)
+                t == "Script Recipes" -> openHelp("recipes")
                 t.endsWith("Profiler") -> state.showProfiler = !state.showProfiler
                 t.startsWith("Export") -> { saveScene(silent = true); exportLauncher.launch("${project.name}.zip") }
                 t.endsWith("Grid") -> state.showGrid = !state.showGrid
@@ -614,7 +631,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Toggle Bottom Panel" -> toggle(bottomPanel)
                 t == "Script API Reference" -> showText("Script API", ScriptEditorActivity.API_DOC)
                 t.startsWith("About") -> showText("About S Engine",
-                    "S Engine Ultimate 2.0\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
+                    "S Engine Full Edition 3.0\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
                         "• 3D: meshes, OBJ models, Blinn-Phong lights, fog, sky, 3D physics, orbit editor\n" +
                         "• Sprite animation editor, asset store, visual blueprints, GLSL shaders & post FX\n" +
                         "• Build real installable APKs of your game\n" +

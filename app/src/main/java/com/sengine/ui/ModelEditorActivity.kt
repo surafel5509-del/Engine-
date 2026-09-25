@@ -151,7 +151,7 @@ class ModelEditorActivity : AppCompatActivity() {
         stats = label("", 10f, C.DIM).apply { setPadding(dp(8), dp(2), dp(8), dp(2)); setBackgroundColor(C.HEADER) }
         center.addView(stats, lp(MATCH, WRAP))
         bottom = hbox().apply { setPadding(dp(6), dp(4), dp(6), dp(4)); setBackgroundColor(C.PANEL) }
-        center.addView(HorizontalScrollView(this).apply { addView(bottom); isHorizontalScrollBarEnabled = false; setBackgroundColor(C.PANEL) }, lp(MATCH, WRAP))
+        center.addView(HorizontalScrollView(this).apply { addView(this@ModelEditorActivity.bottom); isHorizontalScrollBarEnabled = false; setBackgroundColor(C.PANEL) }, lp(MATCH, WRAP))
         body.addView(center, lp(0, MATCH, 1f))
         root.addView(body, lp(MATCH, 0, 1f))
         setContentView(root)

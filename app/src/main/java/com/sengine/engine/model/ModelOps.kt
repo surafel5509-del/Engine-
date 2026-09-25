@@ -78,7 +78,7 @@ object ModelOps {
         val faces = p.faces.map { it.copyOf() }
         val colors = p.faceColors.toList()
         val nv = oldV.size
-        val facePts = faces.map { f -> FloatArray(3).also { c -> for (i in f) for (k in 0 until 3) c[k] += oldV[i][k]; for (k in 0 until 3) c[k] /= f.size.coerceAtLeast(1) } }
+        val facePts = faces.map { f -> FloatArray(3).also { c -> for (i in f) for (k in 0 until 3) c[k] += oldV[i][k]; val inv = 1f / f.size.coerceAtLeast(1); for (k in 0 until 3) c[k] = c[k] * inv } }
         // edge -> adjacent faces
         val edgeFaces = LinkedHashMap<Long, MutableList<Int>>()
         faces.forEachIndexed { fi, f -> for (k in f.indices) edgeFaces.getOrPut(edgeKey(f[k], f[(k + 1) % f.size])) { ArrayList(2) }.add(fi) }
@@ -228,7 +228,7 @@ object ModelOps {
     fun centroid(p: SPart, verts: Set<Int>): FloatArray {
         val c = FloatArray(3); if (verts.isEmpty()) return c
         for (v in verts) for (k in 0 until 3) c[k] += p.verts[v][k]
-        for (k in 0 until 3) c[k] /= verts.size
+        val inv = 1f / verts.size; for (k in 0 until 3) c[k] = c[k] * inv
         return c
     }
 

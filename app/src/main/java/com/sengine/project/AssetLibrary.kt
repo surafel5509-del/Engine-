@@ -36,7 +36,7 @@ object AssetLibrary {
         fun installed(p: Project) = files.all { p.assetFile(it).exists() }
     }
 
-    val categories = listOf("All", "Packs", "Textures", "Sprites", "Sprite Sheets", "Sounds", "Shaders", "Scripts", "Blueprints", "3D Models")
+    val categories = listOf("All", "Packs", "Textures", "Sprites", "Sprite Sheets", "Sounds", "Shaders", "Scripts", "Blueprints", "3D Models", "Music", "UI Kit")
 
     private fun png(p: Project, name: String, b: Bitmap) {
         p.assetsDir.mkdirs()
@@ -126,6 +126,8 @@ object AssetLibrary {
         list += text("Crystal", "3D Models", "Crystal.obj", "Faceted gem, OBJ", "3D") { Models.crystal() }
         list += text("Barrel", "3D Models", "Barrel.obj", "Bulged barrel, OBJ", "3D") { Models.barrel() }
         list += text("Arrow", "3D Models", "Arrow.obj", "Direction arrow, OBJ", "3D") { Models.arrow() }
+        // ---------------------------------------------------------------- Full Edition content
+        list += AssetPacksV3.items(Scripts.all.map { it.first }.toSet())
         // ---------------------------------------------------------------- packs
         fun pack(title: String, desc: String, names: List<String>) {
             val parts = names.mapNotNull { n -> list.firstOrNull { it.title == n } }
@@ -139,6 +141,7 @@ object AssetLibrary {
             listOf("Low-Poly Tree", "Rock", "House", "Crystal", "Checker", "Grass Tile", "Stone", "Player3D", "Rotator", "Toon"))
         pack("VFX Pack", "Particles, fire, shaders and power-up sound",
             listOf("Soft Particle", "Spark", "Fire (6 frames)", "Dissolve", "Hit Flash", "Rainbow", "Hologram", "Power Up"))
+        list.addAll(0, AssetPacksV3.packs(list))
         return list
     }
 
