@@ -185,11 +185,11 @@ object Icons {
     }
 
     /** A tintable drawable for use in ImageViews / TextView compound drawables. */
-    class IconDrawable(val name: String, var tint: Int, private val sizePx: Int) : Drawable() {
+    class IconDrawable(val name: String, var iconColor: Int, private val sizePx: Int) : Drawable() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         override fun draw(canvas: Canvas) {
             val b = bounds
-            draw(canvas, name, b.exactCenterX(), b.exactCenterY(), minOf(b.width(), b.height()).toFloat(), tint, paint)
+            draw(canvas, name, b.exactCenterX(), b.exactCenterY(), minOf(b.width(), b.height()).toFloat(), iconColor, paint)
         }
         override fun setAlpha(alpha: Int) { paint.alpha = alpha }
         override fun setColorFilter(colorFilter: ColorFilter?) { paint.colorFilter = colorFilter }
