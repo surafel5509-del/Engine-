@@ -153,6 +153,6 @@ class EngineAgentTest {
         val play = events.filterIsInstance<AgentEvent.ToolOutput>().last { it.tool == "play_test" }
         assertTrue(play.text, play.ok)
         assertTrue("script log should appear", play.text.contains("hero ready"))
-        assertTrue(tools.execute("write_file", JSONObject().put("path", "Bad.js").put("content", "var f = () => 1;")).text.contains("SYNTAX"))
+        assertTrue(tools.execute("write_file", JSONObject().put("path", "Bad.js").put("content", "function f( { var x = ; }")).text.contains("SYNTAX"))
     }
 }

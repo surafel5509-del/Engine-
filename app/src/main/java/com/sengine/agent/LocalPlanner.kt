@@ -41,7 +41,12 @@ class LocalPlanner : ChatModel {
     }
 
     private fun nameFor(prompt: String): String {
-        Regex("(?:called|named|titled)\\s+\"?([A-Za-z0-9 ]{2,30})\"?", RegexOption.IGNORE_CASE).find(prompt)?.let { return it.groupValues[1].trim() }
+        Regex("(?:called|named|titled)\\s+\"?([A-Za-z0-9 ]{2,30})\"?", RegexOption.IGNORE_CASE).find(prompt)?.let { m ->
+            val quoted = Regex("\"([^\"]{2,30})\"").find(prompt)?.groupValues?.get(1)
+            if (quoted != null) return quoted.trim()
+            val t = m.groupValues[1].split(Regex("\\s+(?i:with|and|where|that|which|in|for|featuring|using|set|about|on|where)\\b")).first().trim()
+            if (t.isNotBlank()) return t
+        }
         val words = prompt.replace(Regex("[^A-Za-z0-9 ]"), " ").split(' ').filter { it.length > 2 && it.lowercase() !in STOP }.take(3)
         return words.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }.ifBlank { "AI Game" }
     }

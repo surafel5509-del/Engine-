@@ -108,7 +108,11 @@ class EngineGamesTest {
                 val dx = bb.x - zz.x; val dy = bb.y - zz.y
                 if (dx * dx + dy * dy < 0.5f * 0.5f) overlaps++
             }
-            val a = i / 40f
+            // aim at the nearest zombie like a player would
+            val pl = r.engine.scene.find("Player")
+            val tgt = if (pl == null) null else r.engine.scene.objects.filter { it.tag == "Zombie" && it.isActiveInHierarchy() && !it.destroyed }
+                .minByOrNull { (it.x - pl.x) * (it.x - pl.x) + (it.y - pl.y) * (it.y - pl.y) }
+            val a = if (pl != null && tgt != null) kotlin.math.atan2(tgt.y - pl.y, tgt.x - pl.x) else i / 40f
             r.engine.input.rawSticks["aim"] = floatArrayOf(kotlin.math.cos(a), kotlin.math.sin(a))
             r.engine.input.joyX = kotlin.math.sin(i / 90f) * 0.6f
             if (r.visible("UpgradePanel") && i % 30 == 0) { if (r.engine.ui.clickByName("Upgrade1")) upgrades++ }
@@ -118,7 +122,7 @@ class EngineGamesTest {
         val wave = r.text("WaveText").removePrefix("WAVE ").toIntOrNull() ?: 0
         println("SIM dz triggerPairs=$pairs geomOverlaps=$overlaps")
         println("SIM dead zone kills=$kills score='${r.text("ScoreText")}' wave=$wave upgrades=$upgrades dead=${r.visible("GameOverPanel")} errors=${r.errors}")
-        assertTrue("should clear waves / kill zombies", kills > 0 || wave >= 2)
+        assertTrue("should kill zombies", kills > 0)
         assertTrue(r.errors.toString(), r.errors.isEmpty())
     }
 
