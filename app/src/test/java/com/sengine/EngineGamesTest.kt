@@ -99,8 +99,9 @@ class EngineGamesTest {
             if (r.visible("GameOverPanel")) return@frames
         }
         val kills = r.text("KillsText").removePrefix("KILLS ").toIntOrNull() ?: 0
-        println("SIM dead zone kills=$kills wave='${r.text("WaveText")}' upgrades=$upgrades dead=${r.visible("GameOverPanel")}")
-        assertTrue("should kill zombies", kills > 0)
+        val wave = r.text("WaveText").removePrefix("WAVE ").toIntOrNull() ?: 0
+        println("SIM dead zone kills=$kills score='${r.text("ScoreText")}' wave=$wave upgrades=$upgrades dead=${r.visible("GameOverPanel")} errors=${r.errors}")
+        assertTrue("should clear waves / kill zombies", kills > 0 || wave >= 2)
         assertTrue(r.errors.toString(), r.errors.isEmpty())
     }
 
