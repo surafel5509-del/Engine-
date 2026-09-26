@@ -38,7 +38,16 @@ class Scene(var name: String) {
     }
 
     fun findById(id: Long) = objects.firstOrNull { it.id == id }
-    fun find(name: String) = objects.firstOrNull { it.name == name && !it.destroyed }
+    /** Finds by name, preferring active objects (so level variants / templates with the same name don't shadow live ones). */
+    fun find(name: String): GameObject? {
+        var fallback: GameObject? = null
+        for (o in objects) {
+            if (o.name != name || o.destroyed) continue
+            if (o.isActiveInHierarchy()) return o
+            if (fallback == null) fallback = o
+        }
+        return fallback
+    }
 
     fun childrenOf(go: GameObject?) = objects.filter { it.parent === go }
 

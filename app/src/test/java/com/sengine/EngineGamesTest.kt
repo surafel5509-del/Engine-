@@ -58,7 +58,7 @@ class EngineGamesTest {
 
     @Test
     fun allGameTemplatesRegistered() {
-        assertEquals(4, Games.templates.size)
+        assertEquals(5, Games.templates.size)
         assertTrue(Templates.all.size >= 11)
     }
 
@@ -202,5 +202,49 @@ class EngineGamesTest {
         assertTrue(r.errors.toString(), r.errors.isEmpty())
         val sp = sqrt(0f)
         assertEquals(0f, sp)
+    }
+
+    @Test
+    fun ironTanksMissionPlaythrough() {
+        val p = project(Games.templates.first { it.name.startsWith("Iron Tanks") }.name)
+        assertEquals("Menu", p.startScene)
+        val m = start(p, "Menu")
+        m.frames(10)
+        assertTrue(m.text("Mission1Btn").contains("BORDER OUTPOST"))
+        assertTrue(m.engine.ui.clickByName("Mission1Btn")); m.frames(5)
+        assertEquals("Battle", m.engine.scene.name)
+        var maxEnemies = 0
+        var fired = 0
+        m.frames(60 * 90) { i ->
+            val sc = m.engine.scene
+            val pl = sc.find("Player")
+            val tgt = if (pl == null) null else sc.objects.filter { it.tag == "Enemy" && it.isActiveInHierarchy() && !it.destroyed }
+                .minByOrNull { (it.x - pl.x) * (it.x - pl.x) + (it.y - pl.y) * (it.y - pl.y) }
+            if (pl != null && tgt != null) {
+                val a = atan2(tgt.y - pl.y, tgt.x - pl.x)
+                m.engine.input.rawSticks["aim"] = floatArrayOf(kotlin.math.cos(a), kotlin.math.sin(a))
+            }
+            m.engine.input.joyX = kotlin.math.sin(i / 70f) * 0.5f
+            maxEnemies = maxOf(maxEnemies, sc.objects.count { it.tag == "Enemy" && it.isActiveInHierarchy() && !it.destroyed })
+            fired = maxOf(fired, sc.objects.count { it.tag == "Shell" && it.isActiveInHierarchy() && !it.destroyed })
+        }
+        val kills = m.text("KillsText").removePrefix("KILLS ").toIntOrNull() ?: 0
+        val bricks = m.engine.scene.objects.count { it.tag == "Brick" && it.isActiveInHierarchy() && !it.destroyed }
+        println("SIM tanks kills=$kills maxEnemies=$maxEnemies shells=$fired bricks=$bricks score='${m.text("ScoreText")}' lives='${m.text("LivesText")}' hq='${m.text("HQText")}' win=${m.visible("WinPanel")} lose=${m.visible("GameOverPanel")} errors=${m.errors}")
+        assertTrue("enemies should spawn", maxEnemies > 0)
+        assertTrue("shells should fly", fired > 0)
+        assertTrue("player should destroy tanks", kills > 0)
+        assertTrue(m.errors.toString(), m.errors.isEmpty())
+    }
+
+    @Test
+    fun ironTanksMission3LayoutSwitches() {
+        val p = project(Games.templates.first { it.name.startsWith("Iron Tanks") }.name)
+        val r = start(p, "Battle") { e -> e.storage.set("it_level", 3.0) }
+        r.frames(30)
+        assertTrue(r.visible("Map3")); assertTrue(!r.visible("Map1"))
+        assertEquals(3, r.engine.scene.objects.count { it.tag == "EnemySpawn" && it.isActiveInHierarchy() })
+        assertTrue(r.text("LevelText").contains("3"))
+        assertTrue(r.errors.toString(), r.errors.isEmpty())
     }
 }

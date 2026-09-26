@@ -55,6 +55,11 @@ object AssetPacksV3 {
         l += tex("Zombie (top-down)", "Zombie.png", "Green shambling zombie, 64×64", "Sprites") { zombie(0xFF7CB342.toInt()) }
         l += tex("Zombie Brute", "ZombieBrute.png", "Big tough zombie, 64×64", "Sprites") { zombie(0xFF8D6E63.toInt()) }
         l += tex("Tank (top-down)", "Tank.png", "Tank body with turret, 64×64", "Sprites") { tank() }
+        l += tex("Tank Hull", "TankHull.png", "Tintable tank hull with tracks (faces right), 64×64", "Sprites") { tankHull() }
+        l += tex("Tank Turret", "TankTurret.png", "Tintable rotating turret + barrel (faces right), 64×64", "Sprites") { tankTurret() }
+        l += tex("Bush", "Bush.png", "Leafy bush that hides tanks, 64×64", "Sprites") { bush() }
+        l += tex("Scorch Mark", "Scorch.png", "Burnt explosion decal, 64×64", "Sprites") { scorch() }
+        l += tex("HQ Eagle", "HQ.png", "Headquarters emblem to defend, 64×64", "Sprites") { hq() }
         l += tex("Enemy Drone", "Drone.png", "Hovering attack drone, 64×64", "Sprites") { drone() }
         l += tex("Boss Ship", "BossShip.png", "Large boss spaceship, 128×128", "Sprites") { boss() }
         l += tex("Race Car (top-down)", "CarTop.png", "Sports car from above, 32×64", "Sprites") { carTop(0xFFE53935.toInt()) }
@@ -250,6 +255,46 @@ object AssetPacksV3 {
         p.color = 0xFF263238.toInt(); c.drawRoundRect(RectF(8f, 10f, 56f, 18f), 3f, 3f, p); c.drawRoundRect(RectF(8f, 46f, 56f, 54f), 3f, 3f, p)
         p.color = 0xFF558B2F.toInt(); c.drawRoundRect(RectF(10f, 16f, 54f, 48f), 6f, 6f, p)
         p.color = 0xFF33691E.toInt(); c.drawCircle(30f, 32f, 11f, p); c.drawRect(30f, 29f, 62f, 35f, p)
+        return b
+    }
+    private fun tankHull(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint()
+        p.color = 0xFF202020.toInt(); c.drawRoundRect(RectF(4f, 6f, 60f, 18f), 4f, 4f, p); c.drawRoundRect(RectF(4f, 46f, 60f, 58f), 4f, 4f, p)
+        p.color = 0xFF555555.toInt(); var x = 6f; while (x < 58f) { c.drawRect(x, 7f, x + 3f, 17f, p); c.drawRect(x, 47f, x + 3f, 57f, p); x += 6f }
+        p.color = 0xFFE0E0E0.toInt(); c.drawRoundRect(RectF(8f, 14f, 58f, 50f), 7f, 7f, p)
+        p.color = 0xFFBDBDBD.toInt(); c.drawRect(12f, 18f, 54f, 22f, p); c.drawRect(12f, 42f, 54f, 46f, p)
+        p.color = 0xFF9E9E9E.toInt(); c.drawRect(52f, 24f, 58f, 40f, p)
+        return b
+    }
+    private fun tankTurret(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint()
+        p.color = 0xFF9E9E9E.toInt(); c.drawRect(30f, 29f, 63f, 35f, p)
+        p.color = 0xFF757575.toInt(); c.drawRect(56f, 27f, 63f, 37f, p)
+        p.color = 0xFFF5F5F5.toInt(); c.drawCircle(30f, 32f, 12f, p)
+        p.color = 0xFFBDBDBD.toInt(); c.drawCircle(27f, 32f, 5f, p)
+        return b
+    }
+    private fun bush(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint(); val r = java.util.Random(7)
+        for (i in 0 until 26) {
+            p.color = lerpC(0xFF1B5E20.toInt(), 0xFF7CB342.toInt(), r.nextFloat())
+            c.drawCircle(10f + r.nextFloat() * 44f, 10f + r.nextFloat() * 44f, 7f + r.nextFloat() * 7f, p)
+        }
+        return b
+    }
+    private fun scorch(): Bitmap = field(64) { x, y ->
+        val dx = x - 32f; val dy = y - 32f; val d = kotlin.math.sqrt(dx * dx + dy * dy) / 32f
+        val n = fbm(x.toFloat(), y.toFloat(), 64, 11)
+        val a = ((1f - d) * 1.6f - n * 0.6f).coerceIn(0f, 0.85f)
+        (((a * 255).toInt() shl 24) or 0x1A1410)
+    }
+    private fun hq(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint()
+        p.color = 0xFF37474F.toInt(); c.drawRoundRect(RectF(4f, 4f, 60f, 60f), 8f, 8f, p)
+        p.color = 0xFFFFC107.toInt()
+        val w = Path(); w.moveTo(32f, 14f); w.lineTo(56f, 26f); w.lineTo(44f, 30f); w.lineTo(40f, 50f); w.lineTo(32f, 44f); w.lineTo(24f, 50f); w.lineTo(20f, 30f); w.lineTo(8f, 26f); w.close()
+        c.drawPath(w, p)
+        p.color = 0xFFFFF8E1.toInt(); c.drawCircle(32f, 22f, 4f, p)
         return b
     }
     private fun drone(): Bitmap {
