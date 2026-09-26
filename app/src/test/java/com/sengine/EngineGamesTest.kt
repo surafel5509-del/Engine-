@@ -270,7 +270,15 @@ class EngineGamesTest {
         println("SIM fps enemies=$total alive=$alive aimed=$aimed minHp=$minHp objective='${m.text("ObjectiveText")}' ammo='${m.text("AmmoText")}' score='${m.text("ScoreText")}' dead=${m.visible("GameOverPanel")} errors=${m.errors}")
         for (e in m.engine.scene.objects.filter { it.name.startsWith("Hostile") && it.isActiveInHierarchy() && !it.destroyed })
             println("SIM fps hostile ${e.name}: ${m.engine.scripts.sendMessage(e, "debugState", null)}")
-        println("SIM fps player hp=${m.engine.scripts.sendMessage(m.engine.scene.find("Player")!!, "getHp", null)}")
+        // walk into a guard's line of fire and hold still: hostiles must fight back
+        val guard = m.engine.scene.objects.firstOrNull { it.tag == "Enemy" && it.isActiveInHierarchy() && !it.destroyed && it.y < 3f }
+        val plr = m.engine.scene.find("Player")!!
+        m.engine.input.rawButtons["Fire"] = false
+        if (guard != null) { synchronized(m.engine.lock) { plr.x = guard.x - 4f; plr.z = guard.z; plr.y = 1.2f } }
+        m.frames(60 * 6)
+        val hpAfter = (m.engine.scripts.sendMessage(plr, "getHp", null) as? Number)?.toDouble() ?: -1.0
+        println("SIM fps ambush guard=${guard?.let { m.engine.scripts.sendMessage(it, "debugState", null) }} playerHp=$hpAfter")
+        if (guard != null) assertTrue("hostiles should shoot back", hpAfter < 100.0)
         assertTrue(total >= 10)
         assertTrue("player should eliminate hostiles", alive < total)
         assertTrue(m.errors.toString(), m.errors.isEmpty())
