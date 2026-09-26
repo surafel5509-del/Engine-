@@ -268,6 +268,9 @@ class EngineGamesTest {
         }
         val alive = m.engine.scene.objects.count { it.tag == "Enemy" && it.isActiveInHierarchy() && !it.destroyed }
         println("SIM fps enemies=$total alive=$alive aimed=$aimed minHp=$minHp objective='${m.text("ObjectiveText")}' ammo='${m.text("AmmoText")}' score='${m.text("ScoreText")}' dead=${m.visible("GameOverPanel")} errors=${m.errors}")
+        for (e in m.engine.scene.objects.filter { it.name.startsWith("Hostile") && it.isActiveInHierarchy() && !it.destroyed })
+            println("SIM fps hostile ${e.name}: ${m.engine.scripts.sendMessage(e, "debugState", null)}")
+        println("SIM fps player hp=${m.engine.scripts.sendMessage(m.engine.scene.find("Player")!!, "getHp", null)}")
         assertTrue(total >= 10)
         assertTrue("player should eliminate hostiles", alive < total)
         assertTrue(m.errors.toString(), m.errors.isEmpty())

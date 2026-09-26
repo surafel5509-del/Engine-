@@ -234,6 +234,7 @@ function addAmmo(n) {
 }
 
 function heal(n) { hp = Math.min(maxHp, hp + n); hud(); }
+function getHp() { return Math.round(hp); }
 function getAccuracy() { return shots == 0 ? 0 : Math.round(hits * 100 / shots); }
 
 function hud() {

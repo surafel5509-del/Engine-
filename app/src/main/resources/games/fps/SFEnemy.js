@@ -3,6 +3,7 @@
 // Params: px, pz = patrol offset; guard = true to hold position.
 var px = 0, pz = 0, guard = false, hp = 100, state = "patrol", dead = false;
 var homeX = 0, homeZ = 0, leg = 0, burst = 0, burstT = 0, fireT = 1.5, seeT = 0, lostT = 0, walkSpeed = 1.5;
+var shotsFired = 0, hitsLanded = 0, sawPlayer = 0;
 var view = 24, accuracy = 1, dmg = 7, deathT = 0, strafe = 1, strafeT = 0;
 
 function start() {
@@ -34,7 +35,7 @@ function update(dt) {
     if (seeT <= 0) {
         seeT = 0.25;
         var sees = dist < view && canSee(p, dist);
-        if (sees) { state = "combat"; lostT = 4; }
+        if (sees) { state = "combat"; lostT = 4; sawPlayer++; }
         else if (state == "combat") { lostT -= 0.25; if (lostT <= 0) state = "hunt"; }
     }
     if (state == "patrol") patrol(dt);
@@ -80,14 +81,17 @@ function shoot(p, dist) {
     var fl = self.child("MuzzleFlash");
     if (fl) { fl.setComponentEnabled("MeshRenderer", true); after(0.05, function () { fl.setComponentEnabled("MeshRenderer", false); }); }
     audio.play("pistol.wav", clamp(0.5 - dist * 0.012, 0.08, 0.5), 0.8);
+    shotsFired++;
     var moving = Math.abs(p.vx) + Math.abs(p.vz) > 1;
     var chance0 = clamp(0.62 - dist * 0.018, 0.1, 0.55) * accuracy * (moving ? 0.65 : 1);
-    if (Math.random() < chance0 && canSee(p, dist)) p.send("damage", dmg);
+    if (Math.random() < chance0 && canSee(p, dist)) { hitsLanded++; p.send("damage", dmg); }
 }
 
 function face(dx, dz) { self.rotY = Math.atan2(dx, dz) * 180 / Math.PI; }
 function move(nx, nz, s) { self.vx = nx * s; self.vz = nz * s; }
 function stop() { self.vx = 0; self.vz = 0; }
+
+function debugState() { return state + " hp=" + Math.round(hp) + " saw=" + sawPlayer + " shots=" + shotsFired + " hits=" + hitsLanded + " pos=" + Math.round(self.x) + "," + Math.round(self.z); }
 
 function alert() { if (!dead && state == "patrol") state = "hunt"; }
 
