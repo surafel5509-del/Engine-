@@ -58,7 +58,7 @@ class EngineGamesTest {
 
     @Test
     fun allGameTemplatesRegistered() {
-        assertEquals(5, Games.templates.size)
+        assertEquals(6, Games.templates.size)
         assertTrue(Templates.all.size >= 11)
     }
 
@@ -210,7 +210,7 @@ class EngineGamesTest {
         assertEquals("Menu", p.startScene)
         val m = start(p, "Menu")
         m.frames(10)
-        assertTrue(m.text("Mission1Btn").contains("BORDER OUTPOST"))
+        assertTrue(m.engine.scene.find("Mission1Btn")!!.get<com.sengine.engine.core.UIButton>()!!.text.contains("BORDER OUTPOST"))
         assertTrue(m.engine.ui.clickByName("Mission1Btn")); m.frames(5)
         assertEquals("Battle", m.engine.scene.name)
         var maxEnemies = 0
@@ -246,5 +246,35 @@ class EngineGamesTest {
         assertEquals(3, r.engine.scene.objects.count { it.tag == "EnemySpawn" && it.isActiveInHierarchy() })
         assertTrue(r.text("LevelText").contains("3"))
         assertTrue(r.errors.toString(), r.errors.isEmpty())
+    }
+
+    @Test
+    fun strikeForceFirefight() {
+        val p = project(Games.templates.first { it.name.startsWith("Strike Force") }.name)
+        assertTrue(p.listScenes().containsAll(listOf("Menu", "Mission", "NightRaid")))
+        val m = start(p, "Menu")
+        m.frames(10)
+        assertTrue(m.engine.ui.clickByName("Mission1Btn")); m.frames(5)
+        assertEquals("Mission", m.engine.scene.name)
+        val total = m.engine.scene.objects.count { it.tag == "Enemy" && it.isActiveInHierarchy() }
+        var minHp = 1f
+        var aimed = 0
+        m.frames(60 * 60) { i ->
+            val pl = m.engine.scene.find("Player") ?: return@frames
+            if (i % 10 == 0) { val r = m.engine.scripts.sendMessage(pl, "aimAtNearest", null); if (r == true) aimed++ }
+            m.engine.input.rawButtons["Fire"] = (i / 20) % 2 == 0
+            minHp = minOf(minHp, m.engine.scene.find("HealthBar")?.get<com.sengine.engine.core.UIProgress>()?.value ?: 1f)
+            if (m.visible("GameOverPanel")) { m.engine.scripts.sendMessage(pl, "heal", 100.0) }
+        }
+        val alive = m.engine.scene.objects.count { it.tag == "Enemy" && it.isActiveInHierarchy() && !it.destroyed }
+        println("SIM fps enemies=$total alive=$alive aimed=$aimed minHp=$minHp objective='${m.text("ObjectiveText")}' ammo='${m.text("AmmoText")}' score='${m.text("ScoreText")}' dead=${m.visible("GameOverPanel")} errors=${m.errors}")
+        assertTrue(total >= 10)
+        assertTrue("player should eliminate hostiles", alive < total)
+        assertTrue(m.errors.toString(), m.errors.isEmpty())
+        // the night raid loads and runs
+        val n = start(p, "NightRaid")
+        n.frames(120)
+        println("SIM fps night enemies=${n.engine.scene.objects.count { it.tag == "Enemy" && it.isActiveInHierarchy() }} errors=${n.errors}")
+        assertTrue(n.errors.toString(), n.errors.isEmpty())
     }
 }

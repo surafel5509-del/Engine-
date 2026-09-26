@@ -18,6 +18,7 @@ import kotlin.math.sqrt
  */
 
 class SObject(private val go: GameObject, private val engine: Engine, private val sys: ScriptSystem) {
+    internal fun rawObject(): GameObject = go
     fun getId(): Double = go.id.toDouble()
     fun getName(): String = go.name
     fun setName(v: String) { go.name = v }
@@ -298,10 +299,13 @@ class SScene(private val engine: Engine, private val sys: ScriptSystem) {
             (dx / l).toFloat(), (dy / l).toFloat(), (dz / l).toFloat(), maxDist.toFloat())?.let { sys.toJs(it) }
     }
     /** 3D raycast returning details: {object, x, y, z, nx, ny, nz, distance, block, blockX, blockY, blockZ} or null. */
-    fun raycastHit(ox: Double, oy: Double, oz: Double, dx: Double, dy: Double, dz: Double, maxDist: Double): Any? {
+    fun raycastHit(ox: Double, oy: Double, oz: Double, dx: Double, dy: Double, dz: Double, maxDist: Double): Any? = raycastHit(ox, oy, oz, dx, dy, dz, maxDist, null)
+    /** Like raycastHit but skips [ignore] (and its children) — e.g. the shooter's own collider. */
+    fun raycastHit(ox: Double, oy: Double, oz: Double, dx: Double, dy: Double, dz: Double, maxDist: Double, ignore: SObject?): Any? {
         val l = Math.sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-9)
+        val ig = ignore?.rawObject()
         val h = engine.physics3D.raycastHit(engine.scene, ox.toFloat(), oy.toFloat(), oz.toFloat(),
-            (dx / l).toFloat(), (dy / l).toFloat(), (dz / l).toFloat(), maxDist.toFloat()) ?: return null
+            (dx / l).toFloat(), (dy / l).toFloat(), (dz / l).toFloat(), maxDist.toFloat(), true, ig) ?: return null
         return sys.newObject(mapOf("object" to h.go?.let { sys.toJs(it) }, "x" to h.x.toDouble(), "y" to h.y.toDouble(), "z" to h.z.toDouble(),
             "nx" to h.nx.toDouble(), "ny" to h.ny.toDouble(), "nz" to h.nz.toDouble(), "distance" to h.distance.toDouble(),
             "block" to h.block.toDouble(), "blockX" to h.blockX.toDouble(), "blockY" to h.blockY.toDouble(), "blockZ" to h.blockZ.toDouble()))
@@ -324,6 +328,14 @@ class SScene(private val engine: Engine, private val sys: ScriptSystem) {
     fun nearest(tag: String, x: Double, y: Double): Any? = engine.scene.objects
         .filter { it.tag == tag && !it.destroyed && it.isActiveInHierarchy() }
         .minByOrNull { (it.world.tx - x) * (it.world.tx - x) + (it.world.ty - y) * (it.world.ty - y) }?.let { sys.toJs(it) }
+    /** 3D version of findInRadius: objects with [tag] within [radius] of (x, y, z), nearest first. */
+    fun findInRadius3(tag: String, x: Double, y: Double, z: Double, radius: Double): Any? {
+        val r2 = radius * radius
+        val list = engine.scene.objects.filter { it.tag == tag && !it.destroyed && it.isActiveInHierarchy() }
+            .map { val w = it.world3; it to ((w[12] - x) * (w[12] - x) + (w[13] - y) * (w[13] - y) + (w[14] - z) * (w[14] - z)) }
+            .filter { it.second <= r2 }.sortedBy { it.second }.map { sys.toJs(it.first) }
+        return sys.newArray(list)
+    }
     fun nearest3(tag: String, x: Double, y: Double, z: Double): Any? = engine.scene.objects
         .filter { it.tag == tag && !it.destroyed && it.isActiveInHierarchy() }
         .minByOrNull { val w = it.world3; (w[12] - x) * (w[12] - x) + (w[13] - y) * (w[13] - y) + (w[14] - z) * (w[14] - z) }?.let { sys.toJs(it) }

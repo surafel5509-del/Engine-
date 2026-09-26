@@ -92,6 +92,16 @@ class ControlLayout(var name: String = "Custom", val controls: MutableList<Contr
                 ControlDef("button", "Break", "", 0.8f, 0.9f, 0.13f, RED, "hammer"),
                 ControlDef("button", "Place", "", 0.8f, 0.66f, 0.13f, BLUE, "cube"),
             )),
+            ControlLayout("FPS Shooter", mutableListOf(
+                ControlDef("joystick", "move", "", 0.13f, 0.74f, 0.3f, BLUE),
+                ControlDef("look", "look", "", 0.62f, 0.45f, 0.75f, 0x00FFFFFF),
+                ControlDef("button", "Fire", "", 0.88f, 0.66f, 0.18f, RED, "target"),
+                ControlDef("button", "Aim", "", 0.74f, 0.8f, 0.13f, BLUE, "search"),
+                ControlDef("button", "A", "", 0.93f, 0.88f, 0.12f, GREEN, "rocket"),
+                ControlDef("button", "Reload", "", 0.8f, 0.46f, 0.11f, ORANGE, "refresh"),
+                ControlDef("button", "Grenade", "", 0.93f, 0.4f, 0.11f, PURPLE, "fire"),
+                ControlDef("button", "Switch", "", 0.62f, 0.9f, 0.11f, PURPLE, "cube"),
+            )),
             ControlLayout("Touch Only", mutableListOf()),
         )
 

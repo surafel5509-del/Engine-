@@ -308,11 +308,12 @@ class PhysicsWorld3D {
         raycastHit(scene, ox, oy, oz, dx, dy, dz, maxDist, false)?.go
 
     /** Full ray cast against colliders and (optionally) voxel terrain. Direction must be normalized. */
-    fun raycastHit(scene: Scene, ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float, maxDist: Float, voxels: Boolean = true): RayHit? {
+    fun raycastHit(scene: Scene, ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float, maxDist: Float, voxels: Boolean = true, ignore: GameObject? = null): RayHit? {
         var best: RayHit? = null
         var bestT = maxDist
         for (go in scene.objects) {
             if (!go.isActiveInHierarchy()) continue
+            if (ignore != null && (go === ignore || ignore.isAncestorOf(go))) continue
             val col = go.get<Collider3D>() ?: continue
             if (col.isTrigger) continue
             val b = Body(go, null, col); refresh(b)
