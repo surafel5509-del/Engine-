@@ -1,0 +1,7 @@
+<resources>
+    <color name="bg">#FF000000</color>
+    <color name="panel">#FF0F0F0F</color>
+    <color name="accent">#FFF5F5F5</color>
+    <color name="text">#FFF2F2F2</color>
+    <color name="ic_bg">#FF000000</color>
+</resources>

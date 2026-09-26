@@ -1,5 +1,0 @@
-import path from "node:path";
-const ALLOWED=new Set(["pwd","ls","find","cat","head","tail","git","node","npm","pnpm","yarn","python","python3","pytest","go","cargo","rustc","java","mvn","gradle","dotnet","docker"]);const BLOCKED=/[;&|`$><\\]/;
-export function safePath(root:string,requested:string){const clean=requested.replaceAll("\\","/").replace(/^\/+/,"");if(!clean||clean.includes(".."))throw new Error("Unsafe path");const target=path.resolve(root,clean),base=path.resolve(root)+path.sep;if(!target.startsWith(base))throw new Error("Workspace escape blocked");return target}
-export function validateCommand(command:string){const value=command.trim();if(!value||value.length>500)throw new Error("Invalid command");if(BLOCKED.test(value))throw new Error("Shell operators are blocked");const binary=value.split(/\s+/)[0];if(!ALLOWED.has(binary))throw new Error(`Command not allowed: ${binary}`);return value}
-export function redact(text:string){return text.replace(/(sk-[A-Za-z0-9_-]{12,}|Bearer\s+[A-Za-z0-9._-]{12,})/g,"[REDACTED]")}
