@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.view.Gravity
 import android.widget.EditText
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.RadioButton
@@ -53,21 +54,51 @@ class ProjectsActivity : AppCompatActivity() {
         val root = vbox().apply { setBackgroundColor(C.BG) }
 
         val header = hbox().apply {
-            setPadding(dp(20), dp(18), dp(20), dp(12))
-            setBackgroundColor(C.HEADER)
+            setPadding(dp(20), dp(16), dp(14), dp(14))
+            background = gradient(0xFF1B2140.toInt(), 0xFF2A1B4A.toInt(), 0f)
+            gravity = Gravity.CENTER_VERTICAL
         }
+        val logo = android.widget.ImageView(this).apply {
+            setImageDrawable(Icons.drawable(this@ProjectsActivity, "rocket", 0xFFFFFFFF.toInt(), 28))
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            background = gradient(C.ACCENT, 0xFF22D3EE.toInt(), dp(14).toFloat())
+        }
+        header.addView(logo, lp(dp(52), dp(52)).margins(0, 0, dp(14), 0))
         val titleBox = vbox()
-        titleBox.addView(label("S Engine", 28f, C.TEXT, true))
-        titleBox.addView(label("2D & 3D game engine & editor for Android  •  Ultimate v2.0", 13f, C.DIM))
+        titleBox.addView(label("S Engine", 26f, C.TEXT, true))
+        titleBox.addView(label("2D & 3D game engine for Android  •  Full Edition 3.0", 12f, C.DIM))
         header.addView(titleBox, lp(0, WRAP, 1f))
-        header.addView(button("Import") { importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-            lp(WRAP, WRAP).margins(0, 0, dp(8), 0))
-        header.addView(button("+ New Project", C.ACCENT, 0xFFFFFFFF.toInt()) { newProjectDialog() })
+        header.addView(iconButton("help", "Help Center") { startActivity(Intent(this, HelpActivity::class.java)) }, lp(dp(44), dp(44)).margins(dp(4), 0, dp(4), 0))
+        header.addView(iconButton("download", "Import project (.zip)") { importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }, lp(dp(44), dp(44)).margins(dp(4), 0, dp(8), 0))
+        header.addView(iconTextButton("plus", "New Project", C.ACCENT, 0xFFFFFFFF.toInt()) { newProjectDialog() })
         root.addView(header, lp(MATCH, WRAP))
 
-        root.addView(label("PROJECTS", 12f, C.DIM, true).apply { setPadding(dp(20), dp(14), dp(20), dp(6)) })
+        val body = vbox()
+        body.addView(sectionHeader("gamepad", "SAMPLE GAMES — made with S Engine").apply { setPadding(dp(20), dp(14), dp(20), dp(6)) })
+        val games = hbox().apply { setPadding(dp(14), 0, dp(14), dp(4)) }
+        val gameIcons = listOf("target" to 0xFF2563EB.toInt(), "fire" to 0xFFDC2626.toInt(), "car" to 0xFFF59E0B.toInt(), "cube" to 0xFF65A30D.toInt())
+        com.sengine.project.games.Games.templates.forEachIndexed { i, t ->
+            val c = vbox().apply { background = round(C.PANEL, dp(14).toFloat()); setPadding(dp(12), dp(12), dp(12), dp(12)) }
+            val ic = android.widget.ImageView(this).apply {
+                setImageDrawable(Icons.drawable(this@ProjectsActivity, gameIcons[i].first, 0xFFFFFFFF.toInt(), 30))
+                scaleType = android.widget.ImageView.ScaleType.CENTER
+                background = gradient(gameIcons[i].second, GameColors.dark(gameIcons[i].second), dp(12).toFloat())
+            }
+            c.addView(ic, lp(MATCH, dp(70)))
+            c.addView(label(t.name.substringBefore(" ("), 15f, C.TEXT, true).apply { setPadding(0, dp(8), 0, 0) })
+            c.addView(label(t.name.substringAfter("(").removeSuffix(")"), 11f, C.DIM))
+            val row = hbox().apply { setPadding(0, dp(8), 0, 0) }
+            row.addView(iconTextButton("play", "Play", C.GREEN, 0xFFFFFFFF.toInt()) { sample(t, true) }, lp(0, WRAP, 1f).margins(0, 0, dp(4), 0))
+            row.addView(iconButton("code", "Open in editor", sizeDp = 36) { sample(t, false) })
+            c.addView(row, lp(MATCH, WRAP))
+            c.setOnClickListener { sample(t, true) }
+            games.addView(c, lp(dp(190), WRAP).margins(dp(6), dp(4), dp(6), dp(4)))
+        }
+        body.addView(HorizontalScrollView(this).apply { addView(games); isHorizontalScrollBarEnabled = false }, lp(MATCH, WRAP))
+        body.addView(sectionHeader("folder", "YOUR PROJECTS").apply { setPadding(dp(20), dp(14), dp(20), dp(6)) })
         list = vbox().apply { setPadding(dp(14), 0, dp(14), dp(20)) }
-        root.addView(ScrollView(this).apply { addView(list) }, lp(MATCH, 0, 1f))
+        body.addView(list, lp(MATCH, WRAP))
+        root.addView(ScrollView(this).apply { addView(body) }, lp(MATCH, 0, 1f))
         setContentView(root)
 
         val prefs = getSharedPreferences("sengine", MODE_PRIVATE)
@@ -144,9 +175,9 @@ class ProjectsActivity : AppCompatActivity() {
         val date = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(p.dir.lastModified()))
         info.addView(label("$scenes scene(s) • $scripts script(s) • $assets asset(s)\nModified $date", 12f, C.DIM))
         card.addView(info, lp(0, WRAP, 1f))
-        card.addView(button("▶") { play(p) }, lp(WRAP, WRAP).margins(dp(4), 0, dp(4), 0))
-        card.addView(button("Open", C.ACCENT, 0xFFFFFFFF.toInt()) { open(p) }, lp(WRAP, WRAP).margins(dp(4), 0, dp(4), 0))
-        val more = button("⋮") { v ->
+        card.addView(iconButton("play", "Play", C.GREEN, C.PANEL2) { play(p) }, lp(dp(40), dp(40)).margins(dp(4), 0, dp(4), 0))
+        card.addView(iconTextButton("code", "Open", C.ACCENT, 0xFFFFFFFF.toInt()) { open(p) }, lp(WRAP, WRAP).margins(dp(4), 0, dp(4), 0))
+        val more = iconButton("more", "More") { v ->
             val pm = PopupMenu(this, v)
             pm.menu.add("Rename"); pm.menu.add("Duplicate"); pm.menu.add("Export .zip"); pm.menu.add("Delete")
             pm.setOnMenuItemClickListener {
@@ -163,6 +194,21 @@ class ProjectsActivity : AppCompatActivity() {
         card.addView(more)
         card.setOnClickListener { open(p) }
         return card
+    }
+
+    /** Opens (creating on first use) one of the bundled sample games. */
+    private fun sample(t: Templates.Template, playNow: Boolean) {
+        val name = t.name.substringBefore(" (")
+        val p = if (ProjectManager.exists(this, name)) ProjectManager.open(this, name) else {
+            toast("Installing $name…")
+            ProjectManager.create(this, name, t)
+        }
+        refresh()
+        if (playNow) play(p) else open(p)
+    }
+
+    private object GameColors {
+        fun dark(c: Int): Int { fun ch(s: Int) = (((c shr s) and 0xFF) * 3 / 5); return (c and 0xFF000000.toInt()) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0) }
     }
 
     private fun colorFor(s: String): Int {

@@ -19,7 +19,7 @@ import com.sengine.engine.core.TextRenderer
 object Templates {
     class Template(val name: String, val description: String, val build: (Project) -> Unit)
 
-    val all: List<Template> by lazy { listOf(empty, platformer, shooter, physics, demo3d, animated, blueprintDemo) }
+    val all: List<Template> by lazy { listOf(empty, platformer, shooter, physics, demo3d, animated, blueprintDemo) + com.sengine.project.games.Games.templates }
 
     const val NEW_SHADER = """// S Engine effect shader (GLSL ES)
 // Available: uTime, uParam, uTex, uUseTex, uColor, uResolution
