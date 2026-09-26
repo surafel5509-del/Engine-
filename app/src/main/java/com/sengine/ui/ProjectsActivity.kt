@@ -208,7 +208,10 @@ class ProjectsActivity : AppCompatActivity() {
     }
 
     private object GameColors {
-        fun dark(c: Int): Int { fun ch(s: Int) = (((c shr s) and 0xFF) * 3 / 5); return (c and 0xFF000000.toInt()) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0) }
+        fun dark(c: Int): Int {
+            fun ch(s: Int): Int = (((c shr s) and 0xFF) * 3 / 5)
+            return (c and 0xFF000000.toInt()) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+        }
     }
 
     private fun colorFor(s: String): Int {
