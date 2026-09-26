@@ -1,8 +1,30 @@
-# S Engine — Ultimate Edition
+# S Engine — 3rd Edition
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet – think "a small Unity in your pocket". Create a project, build scenes with a hierarchy / inspector / gizmos, write JavaScript behaviours in the built-in code editor, press **Play** to test immediately, then run your game full-screen.
 
 > Written from scratch in Kotlin. OpenGL ES 2.0 renderer (2D + 3D), custom 2D/3D physics, Mozilla Rhino JavaScript runtime, visual blueprints, custom GLSL shaders, and an on-device APK builder. No NDK, no external game frameworks.
+
+## 🖤 3rd Edition (v4)
+
+| Area | What's new |
+|---|---|
+| **Look & feel** | New high-contrast **black & white** theme across every screen, redesigned dashboard with hero card and sample-game cards |
+| **AI Agent mode** | Type a game idea → the agent **plans a task list, creates the project, writes scripts, generates textures / sprites / music / 3D models, places objects, sets controls, runs the Game Doctor, play-tests headlessly, fixes errors and can build the APK**. 26 tools. Bring your own key: **OpenAI, Anthropic Claude, Google Gemini, OpenRouter (any model), Groq, DeepSeek, Mistral, xAI Grok, Together, Ollama/LM Studio, any OpenAI-compatible URL** — switch models anytime in *Agent Settings*. Works offline with the built-in planner too |
+| **Sprite Studio** | Pixel editor with layers (opacity / visibility), frames + onion skin, pencil / eraser / fill / line / rect / ellipse / picker, mirror drawing, palettes, outline / shadow / flip / rotate / shift, undo, export PNG, sprite sheet + ready `.anim` clip |
+| **Texture Studio** | 30 procedural styles (bricks, wood, marble, lava, camo, grass, metal, tiles, sci-fi…), seamless tiling preview, colours, scale / roughness / contrast, 64–512 px, optional **normal map** |
+| **UI Creator** | WYSIWYG 16:9 canvas editor for game UI (panels, buttons, text, progress bars, images) with drag + snap, layers, properties, and one-tap **ready-made screens**: main menu, HUD, pause, game over, dialog, shop |
+| **Water physics** | `Water` component — **buoyancy, drag, currents, rolling waves, spring ripples and splash droplets**; 2D side view and 3D volumes; `obj.submerged` / `obj.inWater` in scripts |
+| **Fire & effects** | Particle **presets**: Fire, Torch, Smoke, Dust, Splash, Sparks, Explosion, Rain, Snow, Magic, Bubbles, Steam, Blood, Leaves, Muzzle Flash + turbulence and wind |
+| **New games** | **Strike Force** (3D FPS: day + night missions, soldier AI with line of sight, rifle / shotgun / pistol with ADS, recoil and headshots, grenades, exploding barrels, regenerating health, extraction) and **Iron Tanks** (2D tank battle: aiming turret, destructible walls, rivers, bushes, 3 enemy types, HQ defence, HE shells, power-ups, 3 missions with stars) |
+| **Engine** | Scripts start before their first physics event (no lost triggers), `scene.find()` prefers live objects, `raycastHit(..., ignore)`, `findInRadius3`, FPS control layout |
+
+### Sample games (all complete: menus, settings, HUD, sounds, music, saves)
+* **Sky Strike** – 2D shoot 'em up with 3 levels, bosses and stars
+* **Dead Zone** – 2D twin-stick zombie survival with waves, weapons and upgrades
+* **Iron Tanks** – 2D top-down tank battle *(new)*
+* **Turbo Rally** – 3D racing, 2 maps × 3 roads, AI drivers
+* **MiniCraft** – 3D voxel sandbox
+* **Strike Force** – 3D first-person shooter *(new)*
 
 ## ✨ Ultimate Edition (v2)
 
@@ -141,6 +163,7 @@ app/src/main/java/com/sengine/
 │   ├── blueprint/           visual-script graph, node library, JS compiler
 │   ├── render/              GLES2 2D/3D renderers, meshes/OBJ, shader library, post-processing, gizmos
 │   └── script/              Rhino JavaScript runtime + script API
+├── agent/                   AI Agent: LLM clients (many providers), tool protocol, offline planner
 ├── export/                  APK builder: zip writer, manifest (AXML) patcher, v2 signer, keys, game runtime
 ├── project/                 project storage, zip import/export, templates, asset store library
 └── ui/                      Projects screen, Editor (hierarchy, inspector, viewport, assets, console),
