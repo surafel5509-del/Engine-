@@ -96,6 +96,14 @@ class EngineGamesTest {
             r.engine.input.rawSticks["aim"] = floatArrayOf(kotlin.math.cos(a), kotlin.math.sin(a))
             r.engine.input.joyX = kotlin.math.sin(i / 90f) * 0.6f
             if (r.visible("UpgradePanel") && i % 30 == 0) { if (r.engine.ui.clickByName("Upgrade1")) upgrades++ }
+            if (i % 300 == 0) {
+                val sc = r.engine.scene
+                val act = sc.objects.filter { it.isActiveInHierarchy() && !it.destroyed }
+                val pl = sc.find("Player")
+                val z = act.firstOrNull { it.tag == "Zombie" }
+                val b = act.firstOrNull { it.tag == "Bullet" }
+                println("SIM dz f=$i bullets=${act.count { it.tag == "Bullet" }} zombies=${act.count { it.tag == "Zombie" }} player=(${pl?.x},${pl?.y}) z=(${z?.x},${z?.y}) b=(${b?.x},${b?.y},v=${b?.get<com.sengine.engine.core.Rigidbody2D>()?.vx},trig=${b?.get<com.sengine.engine.core.Collider2D>()?.isTrigger}) wave='${r.text("WaveText")}' kills='${r.text("KillsText")}' score='${r.text("ScoreText")}'")
+            }
             if (r.visible("GameOverPanel")) return@frames
         }
         val kills = r.text("KillsText").removePrefix("KILLS ").toIntOrNull() ?: 0

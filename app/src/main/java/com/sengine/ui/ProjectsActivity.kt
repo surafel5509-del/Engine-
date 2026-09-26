@@ -55,13 +55,13 @@ class ProjectsActivity : AppCompatActivity() {
 
         val header = hbox().apply {
             setPadding(dp(20), dp(16), dp(14), dp(14))
-            background = gradient(0xFF1B2140.toInt(), 0xFF2A1B4A.toInt(), 0f)
+            background = gradient(0xFF111111.toInt(), 0xFF000000.toInt(), 0f)
             gravity = Gravity.CENTER_VERTICAL
         }
         val logo = android.widget.ImageView(this).apply {
-            setImageDrawable(Icons.drawable(this@ProjectsActivity, "rocket", 0xFFFFFFFF.toInt(), 28))
+            setImageDrawable(Icons.drawable(this@ProjectsActivity, "rocket", 0xFF000000.toInt(), 28))
             scaleType = android.widget.ImageView.ScaleType.CENTER
-            background = gradient(C.ACCENT, 0xFF22D3EE.toInt(), dp(14).toFloat())
+            background = gradient(0xFFFFFFFF.toInt(), 0xFF9E9E9E.toInt(), dp(14).toFloat())
         }
         header.addView(logo, lp(dp(52), dp(52)).margins(0, 0, dp(14), 0))
         val titleBox = vbox()
