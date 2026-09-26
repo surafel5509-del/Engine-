@@ -352,6 +352,8 @@ class Engine(val project: Project, initialScene: Scene) {
                 p.age += dt
                 if (p.age >= p.life) { it.remove(); continue }
                 p.vy += pe.gravity * dt
+                if (pe.wind != 0f) p.vx += pe.wind * dt
+                if (pe.turbulence > 0f) { p.vx += (Random.nextFloat() - 0.5f) * pe.turbulence * 4f * dt; p.vy += (Random.nextFloat() - 0.5f) * pe.turbulence * 2f * dt }
                 p.x += p.vx * dt; p.y += p.vy * dt
             }
         }

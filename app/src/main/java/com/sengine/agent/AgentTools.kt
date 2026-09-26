@@ -151,7 +151,8 @@ class AgentTools(private val host: AgentHost) {
                 while (host.openProject(name) != null) name = "$base $i".also { i++ }
                 val tName = a.optString("template", "Empty")
                 val tpl = Templates.all.firstOrNull { it.name.equals(tName, true) }
-                    ?: Templates.all.firstOrNull { it.name.contains(tName, true) || tName.contains(it.name, true) } ?: Templates.all[0]
+                    ?: Templates.all.firstOrNull { it.name.startsWith(tName, true) || it.name.substringBefore(" (").equals(tName, true) }
+                    ?: Templates.all.firstOrNull { it.name.contains(tName, true) || tName.contains(it.name.substringBefore(" ("), true) } ?: Templates.all[0]
                 val p = host.createProject(name, tpl)
                 p.description = a.optString("description", p.description)
                 if (a.optString("orientation") == "portrait") p.orientation = 1

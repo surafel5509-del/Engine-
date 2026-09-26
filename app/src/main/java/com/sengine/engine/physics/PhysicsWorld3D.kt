@@ -49,6 +49,9 @@ class PhysicsWorld3D {
     fun reset() { accumulator = 0f; prevContacts = HashSet(); prevTriggers = HashSet() }
 
     fun step(scene: Scene, dt: Float) {
+        val waters = WaterPhysics.volumes(scene, 1)
+        for (w in waters) w.tick(dt, scene.gravity3D.coerceAtMost(-4f))
+        currentWaters = waters
         if (scene.objects.none { it.getAny<Collider3D>() != null || it.getAny<Rigidbody3D>() != null }) return
         accumulator += min(dt, 0.25f)
         var n = 0
@@ -73,6 +76,8 @@ class PhysicsWorld3D {
         return null
     }
 
+    private var currentWaters: List<com.sengine.engine.core.Water> = emptyList()
+
     private fun fixed(scene: Scene, dt: Float) {
         // integrate
         for (go in scene.objects) {
@@ -83,6 +88,7 @@ class PhysicsWorld3D {
                 0 -> {
                     if (rb.sleepTime > SLEEP_AFTER) { rb.vx = 0f; rb.vy = 0f; rb.vz = 0f; rb.grounded = true; continue }
                     rb.vy += scene.gravity3D * rb.gravityScale * dt
+                    if (currentWaters.isNotEmpty()) WaterPhysics.apply3D(currentWaters, go, rb, scene.gravity3D, dt)
                     if (rb.drag > 0f) { val k = max(0f, 1f - rb.drag * dt); rb.vx *= k; rb.vy *= k; rb.vz *= k }
                     move(go, rb.vx * dt, rb.vy * dt, rb.vz * dt)
                 }

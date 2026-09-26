@@ -183,6 +183,57 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             }
         }
         go.getAny<ParticleEmitter>()?.let { pe -> drawParticles(pe, ppu, if (m3 != null) m3[14] else null) }
+        go.get<com.sengine.engine.core.Water>()?.let { wa ->
+            if (wa.mode == 0 && m3 == null) drawWater2D(go, wa, ppu)
+            else if (wa.mode == 1 && m3 != null) drawWater3D(wa, m3)
+        }
+    }
+
+    private fun drawWater2D(go: GameObject, wa: com.sengine.engine.core.Water, ppu: Float) {
+        val w = go.world
+        val hw = wa.width * kotlin.math.abs(w.scaleX) / 2; val hh = wa.height * kotlin.math.abs(w.scaleY) / 2
+        wa.x0 = w.tx - hw; wa.x1 = w.tx + hw; wa.bottom = w.ty - hh; wa.top = w.ty + hh
+        val n = wa.detail.coerceIn(4, 128)
+        val cw = (2 * hw) / n
+        // deep body
+        r.rect(w.tx, w.ty - hh * 0.35f, 2 * hw, hh * 1.3f, wa.deepColor, 0, ppu)
+        for (i in 0 until n) {
+            val cx = wa.x0 + (i + 0.5f) * cw
+            val top = wa.surfaceAt(cx)
+            val h = top - wa.bottom
+            if (h <= 0f) continue
+            r.rect(cx, wa.bottom + h / 2, cw * 1.04f, h, wa.color, 0, ppu)
+            r.rect(cx, top - 0.035f, cw * 1.04f, 0.07f, wa.surfaceColor, 0, ppu)
+            val shine = (wa.wave(cx) / (wa.waveHeight.coerceAtLeast(0.01f)))
+            if (shine > 0.55f) r.rect(cx, top - 0.16f, cw, 0.05f, (0x55FFFFFF).toInt(), 0, ppu)
+        }
+        for (d in wa.drops) r.rect(d.x, d.y, d.size, d.size, wa.surfaceColor, 1, ppu)
+    }
+
+    private val waterM = FloatArray(16)
+    private fun drawWater3D(wa: com.sengine.engine.core.Water, m3: FloatArray) {
+        val sxw = wa.width * Mat4.scaleOf(m3, 0); val szw = wa.depth * Mat4.scaleOf(m3, 2)
+        wa.x0 = m3[12] - sxw / 2; wa.x1 = m3[12] + sxw / 2; wa.z0 = m3[14] - szw / 2; wa.z1 = m3[14] + szw / 2; wa.top = m3[13]
+        val g = (wa.detail / 3).coerceIn(2, 24)
+        val tx = sxw / g; val tz = szw / g
+        val wh = wa.waveHeight.coerceAtLeast(0.001f)
+        for (i in 0 until g) for (j in 0 until g) {
+            val x = wa.x0 + (i + 0.5f) * tx; val z = wa.z0 + (j + 0.5f) * tz
+            val y = wa.surfaceAt(x, z)
+            val k = ((y - wa.top) / wh * 0.5f + 0.5f).coerceIn(0f, 1f)
+            // slope-based tilt makes the sheet catch the light like real waves
+            val sx = (wa.wave(x + 0.3f, z) - wa.wave(x - 0.3f, z)) / 0.6f
+            val sz = (wa.wave(x, z + 0.3f) - wa.wave(x, z - 0.3f)) / 0.6f
+            Mat4.trs(waterM, x, y, z, -90f + Math.toDegrees(kotlin.math.atan(sz.toDouble())).toFloat(), 0f,
+                Math.toDegrees(kotlin.math.atan(sx.toDouble())).toFloat(), tx * 1.02f, tz * 1.02f, 1f)
+            var c = lerpColor(wa.deepColor, wa.color, k)
+            if (k > 0.8f) c = lerpColor(c, wa.surfaceColor, (k - 0.8f) * 2.5f)
+            r.quadModel(waterM, c, 0, null, 100f)
+        }
+        for (d in wa.drops) {
+            Mat4.trs(waterM, d.x, d.y, d.z, 0f, 0f, 0f, d.size, d.size, d.size)
+            r.quadModel(waterM, wa.surfaceColor, 1, null, 100f)
+        }
     }
 
     private fun drawParticles(pe: ParticleEmitter, ppu: Float, z: Float?) {
@@ -329,7 +380,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         GLES20.glDepthMask(false)
         for (go in objs) {
             if (go.get<MeshRenderer>() != null || isScreenSpace(go)) continue
-            if (go.get<SpriteRenderer>() == null && go.get<TextRenderer>() == null && go.getAny<ParticleEmitter>() == null) continue
+            if (go.get<SpriteRenderer>() == null && go.get<TextRenderer>() == null && go.getAny<ParticleEmitter>() == null && go.get<com.sengine.engine.core.Water>() == null) continue
             transparent.add(v.distanceTo(go.world3[12], go.world3[13], go.world3[14]) to go)
         }
         r.begin(v.viewProj)

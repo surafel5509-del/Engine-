@@ -20,16 +20,17 @@ object ComponentRegistry {
         "UIButton" to { UIButton() },
         "UIProgress" to { UIProgress() },
         "VoxelWorld" to { VoxelWorld() },
+        "Water" to { Water() },
     )
 
     val categories: LinkedHashMap<String, List<String>> = linkedMapOf(
         "Rendering 2D" to listOf("SpriteRenderer", "TextRenderer", "Animator", "ParticleEmitter", "Camera"),
         "Rendering 3D" to listOf("MeshRenderer", "Camera3D", "Light"),
-        "Physics 2D" to listOf("Rigidbody2D", "Collider2D"),
+        "Physics 2D" to listOf("Rigidbody2D", "Collider2D", "Water"),
         "Physics 3D" to listOf("Rigidbody3D", "Collider3D"),
         "Scripting & Audio" to listOf("Script", "AudioSource"),
         "Game UI" to listOf("UIPanel", "UIButton", "UIProgress", "TextRenderer"),
-        "World" to listOf("VoxelWorld"),
+        "World" to listOf("VoxelWorld", "Water"),
     )
 
     val POST_FX = listOf("None", "Grayscale", "Sepia", "Vignette", "CRT", "Pixelate", "Bloom", "Invert", "Chromatic", "Custom Shader")
@@ -136,6 +137,7 @@ class Rigidbody2D : Component() {
     var vx = 0f
     var vy = 0f
     var grounded = false
+    var submerged = 0f
 
     override fun props() = listOf(
         Prop.Choice("Body Type", listOf("Dynamic", "Kinematic", "Static"), { bodyType }, { bodyType = it }),
@@ -201,6 +203,9 @@ class ParticleEmitter : Component() {
     var maxParticles = 300
     var additive = false
     var texture = ""
+    var turbulence = 0f
+    var wind = 0f
+    var preset = 0
 
     // runtime
     val particles = ArrayList<Particle>()
@@ -209,7 +214,35 @@ class ParticleEmitter : Component() {
 
     class Particle(var x: Float, var y: Float, var vx: Float, var vy: Float, var age: Float, var life: Float)
 
+    /** Applies a ready-made look (fire, smoke, dust, splash…). Index into [PRESETS]. */
+    fun applyPreset(i: Int) {
+        preset = i
+        fun set(r: Float, life: Float, sp: Float, dir: Float, spr: Float, s0: Float, s1: Float, c0: Long, c1: Long, g: Float, add: Boolean, turb: Float = 0f, max: Int = 300) {
+            rate = r; lifetime = life; speed = sp; direction = dir; spread = spr; startSize = s0; endSize = s1
+            startColor = c0.toInt(); endColor = c1.toInt(); gravity = g; additive = add; turbulence = turb; maxParticles = max
+        }
+        when (PRESETS.getOrNull(i)) {
+            "Fire" -> set(60f, 0.9f, 2.2f, 90f, 25f, 0.55f, 0.05f, 0xFFFFD54A, 0x00FF2A00, 1.5f, true, 2.5f)
+            "Torch" -> set(40f, 0.6f, 1.6f, 90f, 18f, 0.3f, 0.03f, 0xFFFFE08A, 0x00FF3D00, 1.2f, true, 1.5f)
+            "Smoke" -> set(18f, 2.6f, 1.2f, 90f, 30f, 0.4f, 1.6f, 0x88555555, 0x00222222, 0.3f, false, 0.8f)
+            "Dust" -> set(25f, 1.0f, 1.0f, 90f, 160f, 0.18f, 0.5f, 0x99BCA58A, 0x00BCA58A, -0.6f, false, 0.5f)
+            "Splash" -> set(0f, 0.8f, 4.5f, 90f, 70f, 0.16f, 0.05f, 0xDDBFE9FF, 0x004FC3F7, -12f, false)
+            "Sparks" -> set(40f, 0.5f, 6f, 90f, 120f, 0.08f, 0.01f, 0xFFFFF3B0, 0x00FF8F00, -9f, true)
+            "Explosion" -> set(0f, 0.7f, 7f, 90f, 360f, 0.7f, 0.05f, 0xFFFFE082, 0x00D84315, 0f, true, 3f, 400)
+            "Rain" -> set(120f, 1.2f, 14f, 265f, 4f, 0.07f, 0.07f, 0xAA9FC5E8, 0x559FC5E8, -4f, false, 0f, 800)
+            "Snow" -> set(40f, 5f, 1.2f, 270f, 40f, 0.12f, 0.1f, 0xFFFFFFFF, 0x88FFFFFF, -0.2f, false, 1.2f, 600)
+            "Magic" -> set(35f, 1.4f, 1.2f, 90f, 360f, 0.2f, 0.0f, 0xFFB388FF, 0x0000E5FF, 0.5f, true, 2f)
+            "Bubbles" -> set(8f, 2.5f, 0.8f, 90f, 25f, 0.12f, 0.2f, 0x88E1F5FE, 0x22E1F5FE, 0.8f, false, 1f)
+            "Steam" -> set(25f, 1.8f, 1.5f, 90f, 20f, 0.25f, 1.1f, 0x66FFFFFF, 0x00FFFFFF, 0.4f, false, 1f)
+            "Blood" -> set(0f, 0.6f, 4f, 90f, 360f, 0.14f, 0.05f, 0xFFB71C1C, 0x007F0000, -6f, false)
+            "Leaves" -> set(6f, 5f, 1f, 270f, 60f, 0.2f, 0.2f, 0xFF7CB342, 0x88C0CA33, -0.4f, false, 1.5f)
+            "Muzzle Flash" -> set(0f, 0.08f, 3f, 0f, 20f, 0.5f, 0.1f, 0xFFFFF59D, 0x00FF6F00, 0f, true)
+            else -> {}
+        }
+    }
+
     override fun props() = listOf(
+        Prop.Choice("Preset", PRESETS, { preset }, { applyPreset(it) }),
         Prop.B("Emitting", { emitting }, { emitting = it }),
         Prop.F("Rate", { rate }, { rate = it.coerceAtLeast(0f) }, 1f),
         Prop.F("Lifetime", { lifetime }, { lifetime = it.coerceAtLeast(0.01f) }),
@@ -224,10 +257,16 @@ class ParticleEmitter : Component() {
         Prop.I("Max Particles", { maxParticles }, { maxParticles = it.coerceIn(1, 5000) }),
         Prop.B("Additive Blend", { additive }, { additive = it }),
         Prop.Asset("Texture", AssetKind.TEXTURE, { texture }, { texture = it }),
+        Prop.F("Turbulence", { turbulence }, { turbulence = it.coerceAtLeast(0f) }),
+        Prop.F("Wind", { wind }, { wind = it }),
     )
 
     override fun resetRuntime() {
         particles.clear(); accumulator = 0f; pendingBurst = 0
+    }
+
+    companion object {
+        val PRESETS = listOf("Custom", "Fire", "Torch", "Smoke", "Dust", "Splash", "Sparks", "Explosion", "Rain", "Snow", "Magic", "Bubbles", "Steam", "Blood", "Leaves", "Muzzle Flash")
     }
 }
 
@@ -392,6 +431,7 @@ class Rigidbody3D : Component() {
     var vy = 0f
     var vz = 0f
     var grounded = false
+    var submerged = 0f
 
     override fun props() = listOf(
         Prop.Choice("Body Type", listOf("Dynamic", "Kinematic", "Static"), { bodyType }, { bodyType = it }),

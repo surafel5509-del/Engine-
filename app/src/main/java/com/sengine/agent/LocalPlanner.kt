@@ -31,7 +31,7 @@ class LocalPlanner : ChatModel {
             listOf("Platforming with animated hero", "Coins, hazards and goal")),
         Genre(listOf("3d", "world", "explore"), "3D Demo", "Menu Theme", "First Person", listOf("Ground" to "Grass", "Stone" to "Stone"),
             listOf("3D world with lighting", "Player movement and camera")),
-        Genre(listOf("physics", "puzzle", "ball"), "Sandbox", "Chill Lo-Fi", "Touch Only", listOf("Wood" to "Wood", "Metal" to "Metal"),
+        Genre(listOf("physics", "puzzle", "ball"), "Physics Sandbox", "Chill Lo-Fi", "Touch Only", listOf("Wood" to "Wood", "Metal" to "Metal"),
             listOf("Physics playground", "Spawning objects")),
     )
 
@@ -50,7 +50,7 @@ class LocalPlanner : ChatModel {
         val prompt = messages.first().content.substringAfter("GAME REQUEST:").substringBefore("\n\nStart by").trim()
         val step = messages.count { it.role == "assistant" }
         val g = genreFor(prompt)
-        val tpl = Templates.all.firstOrNull { it.name.equals(g.template, true) }?.name ?: Templates.all.first { it.name == "Platformer" }.name
+        val tpl = (Templates.all.firstOrNull { it.name.startsWith(g.template, true) } ?: Templates.all.firstOrNull { it.name.startsWith("Animated Platformer") } ?: Templates.all[0]).name
         fun reply(thought: String, vararg actions: JSONObject) =
             JSONObject().put("thought", thought).put("actions", JSONArray().also { a -> actions.forEach { a.put(it) } }).toString()
         fun act(tool: String, args: JSONObject = JSONObject()) = JSONObject().put("tool", tool).put("args", args)

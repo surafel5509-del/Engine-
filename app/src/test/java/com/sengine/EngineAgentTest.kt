@@ -147,7 +147,9 @@ class EngineAgentTest {
         val p = tools.project!!
         assertEquals("Level", p.startScene)
         val s = p.loadScene("Level")
-        assertTrue(s.objects.any { it.name == "Hero" && it.components.size == 4 })
+        val hero = s.objects.first { it.name == "Hero" }
+        println("SIM agent hero components=${hero.components.map { it.type }}")
+        assertTrue(hero.components.map { it.type }.containsAll(listOf("Script", "Collider2D", "Rigidbody2D", "SpriteRenderer")))
         val play = events.filterIsInstance<AgentEvent.ToolOutput>().last { it.tool == "play_test" }
         assertTrue(play.text, play.ok)
         assertTrue("script log should appear", play.text.contains("hero ready"))

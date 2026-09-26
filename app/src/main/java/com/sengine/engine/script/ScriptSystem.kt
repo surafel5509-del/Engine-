@@ -234,7 +234,15 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         if (cx == null) return
         val o = toJs(other)
         for (inst in instances.toList()) {
-            if (inst.go === go && inst.started && !inst.failed && inst.comp.enabled) call(inst, fname, o)
+            if (inst.go !== go || inst.failed || !inst.comp.enabled) continue
+            if (!inst.started) {
+                // Objects spawned this frame get their first physics event before update() ran: start them now
+                if (!go.isActiveInHierarchy() || go.destroyed) continue
+                inst.started = true
+                call(inst, "start")
+                if (inst.failed) continue
+            }
+            call(inst, fname, o)
         }
     }
 

@@ -57,6 +57,8 @@ class PhysicsWorld {
     }
 
     private fun fixedStep(scene: Scene, dt: Float) {
+        val waters = WaterPhysics.volumes(scene, 0)
+        for (w in waters) w.tick(dt, scene.gravityY.coerceAtMost(-4f))
         // integrate
         for (go in scene.objects) {
             if (!go.isActiveInHierarchy()) continue
@@ -64,6 +66,7 @@ class PhysicsWorld {
             rb.grounded = false
             when (rb.bodyType) {
                 0 -> {
+                    if (waters.isNotEmpty()) WaterPhysics.apply2D(waters, go, rb, scene.gravityX, scene.gravityY, dt)
                     rb.vx += scene.gravityX * rb.gravityScale * dt
                     rb.vy += scene.gravityY * rb.gravityScale * dt
                     if (rb.drag > 0f) {

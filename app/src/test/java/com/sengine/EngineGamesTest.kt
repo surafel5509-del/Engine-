@@ -112,24 +112,6 @@ class EngineGamesTest {
             r.engine.input.rawSticks["aim"] = floatArrayOf(kotlin.math.cos(a), kotlin.math.sin(a))
             r.engine.input.joyX = kotlin.math.sin(i / 90f) * 0.6f
             if (r.visible("UpgradePanel") && i % 30 == 0) { if (r.engine.ui.clickByName("Upgrade1")) upgrades++ }
-            if (i % 300 == 0) {
-                val sc = r.engine.scene
-                val act = sc.objects.filter { it.isActiveInHierarchy() && !it.destroyed }
-                val pl = sc.find("Player")
-                val z = act.firstOrNull { it.tag == "Zombie" }
-                val b = act.firstOrNull { it.tag == "Bullet" }
-                if (i == 600) {
-                    val zz = act.filter { it.tag == "Zombie" }
-                    println("SIM dz probe gameInst=${r.engine.scripts.instanceCount("DZGame.js")} started=${r.engine.scripts.startedCount("DZGame.js")} bulletInst=${r.engine.scripts.instanceCount("DZBullet.js")} zombieInst=${r.engine.scripts.instanceCount("DZZombie.js")} zStarted=${r.engine.scripts.startedCount("DZZombie.js")} names=${zz.map { it.name }}")
-                    zz.firstOrNull()?.let { z0 ->
-                        val col = z0.get<com.sengine.engine.core.Collider2D>()
-                        println("SIM dz zombie col shape=${col?.shape} r=${col?.radius} trig=${col?.isTrigger} body=${z0.get<com.sengine.engine.core.Rigidbody2D>()?.bodyType} scale=${z0.scaleX}")
-                        val res = r.engine.scripts.sendMessage(z0, "hit", 100.0)
-                        println("SIM dz direct hit -> destroyed=${z0.destroyed} kills='${r.text("KillsText")}' res=$res errors=${r.errors}")
-                    }
-                }
-                println("SIM dz f=$i bullets=${act.count { it.tag == "Bullet" }} zombies=${act.count { it.tag == "Zombie" }} player=(${pl?.x},${pl?.y}) z=(${z?.x},${z?.y}) b=(${b?.x},${b?.y},v=${b?.get<com.sengine.engine.core.Rigidbody2D>()?.vx},trig=${b?.get<com.sengine.engine.core.Collider2D>()?.isTrigger}) wave='${r.text("WaveText")}' kills='${r.text("KillsText")}' score='${r.text("ScoreText")}'")
-            }
             if (r.visible("GameOverPanel")) return@frames
         }
         val kills = r.text("KillsText").removePrefix("KILLS ").toIntOrNull() ?: 0

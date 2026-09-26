@@ -55,6 +55,9 @@ class SObject(private val go: GameObject, private val engine: Engine, private va
     fun getVz(): Double = (rb3?.vz ?: 0f).toDouble()
     fun setVz(v: Double) { rb3?.vz = v.toFloat() }
     fun isGrounded(): Boolean = rb3?.grounded ?: go.getAny<Rigidbody2D>()?.grounded ?: false
+    /** 0…1 how deep the body is in a Water volume. */
+    fun getSubmerged(): Double = (rb3?.submerged ?: go.getAny<Rigidbody2D>()?.submerged ?: 0f).toDouble()
+    fun isInWater(): Boolean = getSubmerged() > 0.0
     fun addForce(fx: Double, fy: Double) {
         rb3?.let { it.vx += (fx / it.mass).toFloat(); it.vy += (fy / it.mass).toFloat(); return }
         val rb = go.getAny<Rigidbody2D>() ?: return
