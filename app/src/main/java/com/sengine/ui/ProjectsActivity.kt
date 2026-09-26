@@ -66,23 +66,40 @@ class ProjectsActivity : AppCompatActivity() {
         header.addView(logo, lp(dp(52), dp(52)).margins(0, 0, dp(14), 0))
         val titleBox = vbox()
         titleBox.addView(label("S Engine", 26f, C.TEXT, true))
-        titleBox.addView(label("2D & 3D game engine for Android  •  Full Edition 3.0", 12f, C.DIM))
+        titleBox.addView(label("2D & 3D game engine for Android  •  3rd Edition", 12f, C.DIM))
         header.addView(titleBox, lp(0, WRAP, 1f))
         header.addView(iconButton("help", "Help Center") { startActivity(Intent(this, HelpActivity::class.java)) }, lp(dp(44), dp(44)).margins(dp(4), 0, dp(4), 0))
         header.addView(iconButton("download", "Import project (.zip)") { importLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }, lp(dp(44), dp(44)).margins(dp(4), 0, dp(8), 0))
-        header.addView(iconTextButton("plus", "New Project", C.ACCENT, 0xFFFFFFFF.toInt()) { newProjectDialog() })
+        header.addView(iconTextButton("plus", "New Project", C.ACCENT, 0xFF000000.toInt()) { newProjectDialog() })
         root.addView(header, lp(MATCH, WRAP))
 
         val body = vbox()
+        // AI agent hero
+        val hero = hbox().apply {
+            background = round(0xFF0C0C0C.toInt(), dp(16).toFloat(), 1, 0xFF3A3A3A.toInt())
+            setPadding(dp(18), dp(14), dp(14), dp(14)); gravity = Gravity.CENTER_VERTICAL
+            setOnClickListener { startActivity(Intent(this@ProjectsActivity, AgentActivity::class.java)) }
+        }
+        hero.addView(android.widget.ImageView(this).apply {
+            setImageDrawable(Icons.drawable(this@ProjectsActivity, "robot", 0xFF000000.toInt(), 30))
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            background = round(0xFFFFFFFF.toInt(), dp(14).toFloat())
+        }, lp(dp(56), dp(56)))
+        hero.addView(vbox().apply {
+            addView(label("AI Game Agent", 18f, C.TEXT, true))
+            addView(label("Describe any game — the agent plans it, builds scenes, scripts, art and music, tests itself and exports an APK. Bring your own OpenAI / Claude / Gemini / OpenRouter key or use the offline planner.", 12f, C.DIM))
+        }, lp(0, WRAP, 1f).margins(dp(14), 0, dp(10), 0))
+        hero.addView(iconTextButton("wand", "Create with AI", C.ACCENT, 0xFF000000.toInt()) { startActivity(Intent(this, AgentActivity::class.java)) })
+        body.addView(hero, lp(MATCH, WRAP).margins(dp(20), dp(14), dp(20), dp(4)))
         body.addView(sectionHeader("gamepad", "SAMPLE GAMES — made with S Engine").apply { setPadding(dp(20), dp(14), dp(20), dp(6)) })
         val games = hbox().apply { setPadding(dp(14), 0, dp(14), dp(4)) }
-        val gameIcons = listOf("target" to 0xFF2563EB.toInt(), "fire" to 0xFFDC2626.toInt(), "car" to 0xFFF59E0B.toInt(), "cube" to 0xFF65A30D.toInt())
+        val gameIcons = listOf("target" to 0xFF2563EB.toInt(), "fire" to 0xFFDC2626.toInt(), "car" to 0xFFF59E0B.toInt(), "cube" to 0xFF65A30D.toInt(), "tank" to 0xFF4D7C0F.toInt(), "shield" to 0xFF57534E.toInt(), "star" to 0xFF7C3AED.toInt())
         com.sengine.project.games.Games.templates.forEachIndexed { i, t ->
             val c = vbox().apply { background = round(C.PANEL, dp(14).toFloat()); setPadding(dp(12), dp(12), dp(12), dp(12)) }
             val ic = android.widget.ImageView(this).apply {
-                setImageDrawable(Icons.drawable(this@ProjectsActivity, gameIcons[i].first, 0xFFFFFFFF.toInt(), 30))
+                setImageDrawable(Icons.drawable(this@ProjectsActivity, gameIcons[i % gameIcons.size].first, 0xFFFFFFFF.toInt(), 30))
                 scaleType = android.widget.ImageView.ScaleType.CENTER
-                background = gradient(gameIcons[i].second, GameColors.dark(gameIcons[i].second), dp(12).toFloat())
+                background = gradient(gameIcons[i % gameIcons.size].second, GameColors.dark(gameIcons[i % gameIcons.size].second), dp(12).toFloat())
             }
             c.addView(ic, lp(MATCH, dp(70)))
             c.addView(label(t.name.substringBefore(" ("), 15f, C.TEXT, true).apply { setPadding(0, dp(8), 0, 0) })

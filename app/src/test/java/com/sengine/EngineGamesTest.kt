@@ -91,7 +91,23 @@ class EngineGamesTest {
         val p = project(Games.templates[1].name)
         val r = start(p, "Arena")
         var upgrades = 0
+        val pairs = HashMap<String, Int>()
+        var overlaps = 0
+        val orig = r.engine.physics.listener!!
+        r.engine.physics.listener = object : com.sengine.engine.physics.PhysicsWorld.Listener {
+            override fun onCollisionEnter(a: com.sengine.engine.core.GameObject, b: com.sengine.engine.core.GameObject) { orig.onCollisionEnter(a, b) }
+            override fun onTriggerEnter(a: com.sengine.engine.core.GameObject, b: com.sengine.engine.core.GameObject) {
+                val k = listOf(a.tag, b.tag).sorted().joinToString("+"); pairs[k] = (pairs[k] ?: 0) + 1
+                orig.onTriggerEnter(a, b)
+            }
+            override fun onTriggerExit(a: com.sengine.engine.core.GameObject, b: com.sengine.engine.core.GameObject) { orig.onTriggerExit(a, b) }
+        }
         r.frames(60 * 90) { i ->
+            val act0 = r.engine.scene.objects.filter { it.isActiveInHierarchy() && !it.destroyed }
+            for (bb in act0) if (bb.tag == "Bullet") for (zz in act0) if (zz.tag == "Zombie") {
+                val dx = bb.x - zz.x; val dy = bb.y - zz.y
+                if (dx * dx + dy * dy < 0.5f * 0.5f) overlaps++
+            }
             val a = i / 40f
             r.engine.input.rawSticks["aim"] = floatArrayOf(kotlin.math.cos(a), kotlin.math.sin(a))
             r.engine.input.joyX = kotlin.math.sin(i / 90f) * 0.6f
@@ -118,6 +134,7 @@ class EngineGamesTest {
         }
         val kills = r.text("KillsText").removePrefix("KILLS ").toIntOrNull() ?: 0
         val wave = r.text("WaveText").removePrefix("WAVE ").toIntOrNull() ?: 0
+        println("SIM dz triggerPairs=$pairs geomOverlaps=$overlaps")
         println("SIM dead zone kills=$kills score='${r.text("ScoreText")}' wave=$wave upgrades=$upgrades dead=${r.visible("GameOverPanel")} errors=${r.errors}")
         assertTrue("should clear waves / kill zombies", kills > 0 || wave >= 2)
         assertTrue(r.errors.toString(), r.errors.isEmpty())
