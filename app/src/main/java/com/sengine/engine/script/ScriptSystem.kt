@@ -17,9 +17,10 @@ import org.mozilla.javascript.ScriptableObject
  */
 class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
 
-    private class Instance(val go: GameObject, val comp: ScriptComponent, val scope: Scriptable) {
+    private class Instance(val go: GameObject, val comp: ScriptComponent, val scope: Scriptable?, val native: Long = 0L) {
         var started = false
         var failed = false
+        val isNative get() = native != 0L
     }
 
     private var cx: Context? = null
@@ -28,6 +29,10 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     private val instances = ArrayList<Instance>()
     private val wrappers = HashMap<Long, SObject>()
     private val compiled = HashMap<String, Script>()
+    /** Compiled C++ programs (native handles) for this play session. */
+    private val nativePrograms = HashMap<String, Long>()
+    private val nativeFailed = HashSet<String>()
+    private var nativeHost: NativeHost? = null
     private val inputApi = SInput(engine)
     val voxelApi = SVoxel(engine, this)
 
@@ -57,6 +62,10 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         put(g, "voxel", voxelApi)
         c.evaluateString(g, PRELUDE, "prelude", 1, null)
         compiled.clear()
+        if (NativeScripts.available) {
+            nativeHost = NativeHost(engine, this, inputApi)
+            try { NativeScripts.nSetHost(nativeHost) } catch (e: Throwable) { engine.log(2, "C++ runtime: ${e.message}") }
+        }
         for (go in engine.scene.objects.toList()) attach(go)
         startPending()
     }
@@ -66,6 +75,11 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
             for (inst in instances.toList()) if (inst.started && !inst.failed) call(inst, "onStop")
             try { Context.exit() } catch (_: Exception) {}
         }
+        for (inst in instances) if (inst.isNative) try { NativeScripts.nFreeInstance(inst.native) } catch (_: Throwable) {}
+        for (h in nativePrograms.values) try { NativeScripts.nFreeProgram(h) } catch (_: Throwable) {}
+        nativePrograms.clear()
+        nativeFailed.clear()
+        if (nativeHost != null) { try { NativeScripts.nSetHost(null) } catch (_: Throwable) {}; nativeHost = null }
         cx = null
         global = null
         ownerThread = null
@@ -99,7 +113,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         if (cx == null) return
         for (inst in instances.toList()) {
             if (inst.failed || !inst.started || inst.go.destroyed || !inst.go.isActiveInHierarchy()) continue
-            if (inst.scope.get(fname, inst.scope) is Function) call(inst, fname, arg)
+            if (if (inst.isNative) hasNative(inst, fname) else inst.scope!!.get(fname, inst.scope) is Function) call(inst, fname, arg)
         }
     }
 
@@ -115,6 +129,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         val g = global ?: return
         for (comp in go.components) {
             if (comp !is ScriptComponent || comp.script.isBlank()) continue
+            if (isCpp(comp.script)) { attachNative(go, comp); continue }
             val script = compiled[comp.script] ?: run {
                 val raw = engine.project.readAsset(comp.script)
                 val src = if (raw != null && comp.script.endsWith(".bp")) {
@@ -152,6 +167,45 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
             }
         }
         for (child in engine.scene.childrenOf(go)) attach(child)
+    }
+
+    private fun hasNative(inst: Instance, fname: String): Boolean = try { NativeScripts.nHas(inst.native, fname) } catch (_: Throwable) { false }
+
+    /** C++ behaviour: compile once per session, instantiate the Behaviour class for this object, apply inspector params. */
+    private fun attachNative(go: GameObject, comp: ScriptComponent) {
+        if (!NativeScripts.available) {
+            if (nativeFailed.add(comp.script)) engine.log(2, "${comp.script}: C++ scripts need the native engine library (libsengine.so), which is not available here")
+            return
+        }
+        if (comp.script in nativeFailed) return
+        val prog = nativePrograms[comp.script] ?: run {
+            val src = engine.project.readAsset(comp.script)
+            if (src == null) { nativeFailed += comp.script; engine.log(2, "Script not found: ${comp.script} (on ${go.name})"); return }
+            try { NativeScripts.nCompile(comp.script, src).also { nativePrograms[comp.script] = it } }
+            catch (e: Throwable) { nativeFailed += comp.script; engine.log(2, "${comp.script} ${e.message}"); return }
+        }
+        val handle = try { NativeScripts.nNewInstance(prog, go.id) } catch (e: Throwable) { engine.log(2, "${comp.script} ${e.message}"); return }
+        for (raw in comp.params.split(',', '\n', ';')) {
+            val kv = raw.split('=', limit = 2)
+            if (kv.size == 2 && kv[0].isNotBlank()) NativeScripts.nSetField(handle, kv[0].trim(), kv[1].trim().trim('"', '\''))
+        }
+        instances.add(Instance(go, comp, null, handle))
+    }
+
+    /** Native value -> JavaScript value (for JS code that calls into a C++ script with send()). */
+    private fun nativeToJs(v: Any?): Any? = when (v) {
+        is NObj -> engine.scene.findById(v.id)?.let { toJs(it) }
+        is Long -> v.toDouble()
+        is DoubleArray -> newObject(mapOf("x" to v.getOrElse(0) { 0.0 }, "y" to v.getOrElse(1) { 0.0 }, "z" to v.getOrElse(2) { 0.0 }))
+        is Array<*> -> newArray(v.map { nativeToJs(it) })
+        is NDict -> newObject(v.toMap().mapValues { nativeToJs(it.value) })
+        else -> v
+    }
+
+    /** Engine / JavaScript value -> native value. */
+    private fun jsToNative(v: Any?): Any? = when (v) {
+        is GameObject -> NObj(v.id)
+        else -> nativeHost?.out(v) ?: if (v is org.mozilla.javascript.Wrapper) (v.unwrap() as? SObject)?.let { NObj(it.rawObject().id) } else v
     }
 
     private fun applyParams(scope: Scriptable, params: String) {
@@ -203,10 +257,20 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     }
 
     private fun call(inst: Instance, fname: String, vararg args: Any?): Any? {
-        val f = inst.scope.get(fname, inst.scope)
+        if (inst.isNative) {
+            return try {
+                nativeToJs(NativeScripts.nCall(inst.native, fname, Array(args.size) { jsToNative(args[it]) }))
+            } catch (e: Throwable) {
+                engine.log(2, "${inst.comp.script} ${e.message} (in $fname)")
+                inst.failed = true
+                null
+            }
+        }
+        val scope = inst.scope!!
+        val f = scope.get(fname, scope)
         if (f !is Function) return null
         return try {
-            f.call(cx, inst.scope, inst.scope, arrayOf(*args))
+            f.call(cx, scope, scope, arrayOf(*args))
         } catch (e: RhinoException) {
             engine.log(2, "${inst.comp.script}:${e.lineNumber()} in $fname(): ${e.details()}")
             inst.failed = true
@@ -250,6 +314,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         for (inst in instances.toList()) if (inst.go === go) {
             if (inst.started && !inst.failed) call(inst, "onDestroy")
             instances.remove(inst)
+            if (inst.isNative) try { NativeScripts.nFreeInstance(inst.native) } catch (_: Throwable) {}
         }
         wrappers.remove(go.id)
     }
@@ -267,6 +332,7 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     }
 
     companion object {
+        fun isCpp(name: String) = name.endsWith(".cpp") || name.endsWith(".cc") || name.endsWith(".cxx")
         const val PRELUDE = """
 function log() { var s = []; for (var i = 0; i < arguments.length; i++) s.push(String(arguments[i])); console.log(s.join(' ')); }
 function warn(m) { console.warn(String(m)); }

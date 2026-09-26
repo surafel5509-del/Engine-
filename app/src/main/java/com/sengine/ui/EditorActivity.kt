@@ -445,6 +445,14 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 refreshAssets()
                 onCreated(n)
             }
+            .setNeutralButton("C++ Script") { _, _ ->
+                var n = f.text.toString().trim().replace(Regex("[^A-Za-z0-9_]"), "").ifBlank { "NewBehaviour" }
+                if (n.first().isDigit()) n = "S$n"
+                n = project.uniqueAssetName("$n.cpp")
+                project.writeAsset(n, Templates.newCppScript(n.removeSuffix(".cpp")))
+                refreshAssets()
+                onCreated(n)
+            }
             .setNegativeButton("Cancel", null)
             .show()
     }
@@ -500,7 +508,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             "Physics Box", "Physics Ball", "Static Platform", "Trigger Zone", "Animated Sprite").forEach { m2.add(it) }
         val m3 = pm.menu.addSubMenu("3D Object")
         listOf("Cube", "Sphere", "Plane", "Cylinder", "Cone", "Torus", "Capsule", "Pyramid",
-            "Physics Cube 3D", "Physics Sphere 3D", "Ground 3D", "3D Camera", "Directional Light", "Point Light").forEach { m3.add(it) }
+            "Physics Cube 3D", "Physics Sphere 3D", "Ground 3D", "Landscape (C++ terrain)", "3D Camera", "Directional Light", "Point Light").forEach { m3.add(it) }
         val p2 = pm.menu.addSubMenu("Prefabs 2D (water, fire, weather…)")
         com.sengine.project.Prefabs.PREFABS_2D.forEach { p2.add(it) }
         val p3 = pm.menu.addSubMenu("Prefabs 3D (lake, campfire, lamps…)")
@@ -542,6 +550,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 in meshKinds -> g.add(MeshRenderer().also { it.mesh = meshKinds.indexOf(kind) }).also { if (kind == "Plane") { g.scaleX = 10f; g.scaleZ = 10f } }
                 "Physics Cube 3D" -> { g.y += 3f; g.add(MeshRenderer().also { it.color = 0xFFFFB74D.toInt() }); g.add(Collider3D()); g.add(Rigidbody3D()) }
                 "Physics Sphere 3D" -> { g.y += 3f; g.add(MeshRenderer().also { it.mesh = 1; it.color = 0xFF4FC3F7.toInt() }); g.add(Collider3D().also { it.shape = 1 }); g.add(Rigidbody3D().also { it.bounciness = 0.5f }) }
+                "Landscape (C++ terrain)" -> { g.name = scene.uniqueName("Landscape"); g.x = 0f; g.y = 0f; g.z = 0f; g.add(com.sengine.engine.core.Landscape()) }
                 "Ground 3D" -> { g.scaleX = 20f; g.scaleY = 0.5f; g.scaleZ = 20f; g.y = -0.25f; g.add(MeshRenderer().also { it.color = 0xFF6D8B5A.toInt() }); g.add(Collider3D()) }
                 "3D Camera" -> { g.y = 3f; g.z = 10f; g.rotX = -12f; g.add(Camera3D()) }
                 "Directional Light" -> { g.rotX = -50f; g.rotY = 30f; g.add(Light()) }
@@ -772,7 +781,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             card.addView(iv, lp(dp(56), dp(48)))
         } else {
             val (glyph, color) = when (kind) {
-                AssetKind.SCRIPT -> (if (name.endsWith(".bp")) "BP" to 0xFF4FC3F7.toInt() else "JS" to C.YELLOW)
+                AssetKind.SCRIPT -> (if (name.endsWith(".bp")) "BP" to 0xFF4FC3F7.toInt() else if (com.sengine.engine.script.ScriptSystem.isCpp(name)) "C++" to 0xFF9CDCFE.toInt() else "JS" to C.YELLOW)
                 AssetKind.SOUND -> "♪" to C.GREEN
                 AssetKind.SHADER -> "GLSL" to 0xFFE040FB.toInt()
                 AssetKind.ANIMATION -> "▶▶" to 0xFFFF8A65.toInt()

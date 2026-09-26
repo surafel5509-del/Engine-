@@ -19,7 +19,8 @@ import com.sengine.engine.core.TextRenderer
 object Templates {
     class Template(val name: String, val description: String, val build: (Project) -> Unit)
 
-    val all: List<Template> by lazy { listOf(empty, platformer, shooter, physics, demo3d, animated, blueprintDemo) + com.sengine.project.games.Games.templates }
+    val all: List<Template> by lazy { listOf(empty, platformer, shooter, physics, demo3d, animated, blueprintDemo) + com.sengine.project.games.Games.templates +
+        listOf(Template("Native World (C++ Open World)", "Unreal-style open world written in native C++ scripts: eroded C++ Landscape island, lake, scattered forest, crystals to collect, third-person player and HUD.") { com.sengine.project.games.NativeWorldGame.build(it) }) }
 
     const val NEW_SHADER = """// S Engine effect shader (GLSL ES)
 // Available: uTime, uParam, uTex, uUseTex, uColor, uResolution
@@ -47,7 +48,39 @@ function update(dt) {
 // function onTap() {}
 """
 
-    // ---------------------------------------------------------------- helpers
+    /** Starter native C++ behaviour (runs in the libsengine C++ script VM). */
+    fun newCppScript(cls: String): String {
+        val name = cls.replace(Regex("[^A-Za-z0-9_]"), "_").let { if (it.isEmpty() || it[0].isDigit()) "My$it" else it }
+        return """// S Engine native C++ behaviour — runs in the libsengine C++ VM (Unity & Unreal style APIs both work).
+#include "SEngine.h"
+
+class $name : public Behaviour {
+public:
+    // Public fields appear as script params ("speed=8") in the Inspector.
+    float speed = 5.0f;
+    int score = 0;
+
+    void Start() override {
+        Log("Hello from C++", gameObject.name);
+    }
+
+    void Update(float dt) override {
+        Vec3 move(Input::AxisX(), 0, -Input::AxisY());
+        gameObject.position += move * speed * dt;
+    }
+
+    void OnCollision(GameObject other) {
+        // Scene::Spawn("Explosion", gameObject.x, gameObject.y, gameObject.z);
+    }
+
+    void OnTap() {
+        score++;
+        printf("tapped %d times\n", score);
+    }
+};
+"""
+    }
+
     private fun obj(s: Scene, name: String, x: Float, y: Float, sx: Float = 1f, sy: Float = 1f, parent: GameObject? = null): GameObject {
         val go = s.create(name, parent)
         go.x = x; go.y = y; go.scaleX = sx; go.scaleY = sy

@@ -21,6 +21,7 @@ object ComponentRegistry {
         "UIProgress" to { UIProgress() },
         "VoxelWorld" to { VoxelWorld() },
         "Water" to { Water() },
+        "Landscape" to { Landscape() },
     )
 
     val categories: LinkedHashMap<String, List<String>> = linkedMapOf(
@@ -30,7 +31,7 @@ object ComponentRegistry {
         "Physics 3D" to listOf("Rigidbody3D", "Collider3D"),
         "Scripting & Audio" to listOf("Script", "AudioSource"),
         "Game UI" to listOf("UIPanel", "UIButton", "UIProgress", "TextRenderer"),
-        "World" to listOf("VoxelWorld", "Water"),
+        "World" to listOf("Landscape", "VoxelWorld", "Water"),
     )
 
     val POST_FX = listOf("None", "Grayscale", "Sepia", "Vignette", "CRT", "Pixelate", "Bloom", "Invert", "Chromatic", "Custom Shader")

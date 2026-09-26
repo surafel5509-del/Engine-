@@ -36,6 +36,7 @@ class ScriptEditorActivity : AppCompatActivity() {
     private var restoring = false
 
     private var glsl = false
+    private var cpp = false
     private val highlightTask = Runnable { highlight(editor.text) }
     private val historyTask = Runnable { pushHistory() }
 
@@ -44,6 +45,7 @@ class ScriptEditorActivity : AppCompatActivity() {
         project = ProjectManager.open(this, intent.getStringExtra("project")!!)
         asset = intent.getStringExtra("asset")!!
         glsl = asset.endsWith(".glsl")
+        cpp = com.sengine.engine.script.ScriptSystem.isCpp(asset)
         saved = project.readAsset(asset) ?: ""
 
         val root = vbox().apply { setBackgroundColor(C.BG) }
@@ -53,7 +55,8 @@ class ScriptEditorActivity : AppCompatActivity() {
         bar.addView(titleView, lp(0, WRAP, 1f))
         bar.addView(button("↶") { undo() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
         bar.addView(button("↷") { redo() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
-        bar.addView(button(if (glsl) "GLSL" else "API") { showApi() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
+        if (cpp) bar.addView(button("Check") { checkCpp() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
+        bar.addView(button(if (glsl) "GLSL" else if (cpp) "C++ API" else "API") { showApi() }, lp(WRAP, WRAP).margins(dp(3), 0, dp(3), 0))
         bar.addView(button("Save", C.ACCENT, 0xFFFFFFFF.toInt()) { save() }, lp(WRAP, WRAP).margins(dp(3), 0, 0, 0))
         root.addView(bar, lp(MATCH, WRAP))
 
@@ -193,6 +196,10 @@ class ScriptEditorActivity : AppCompatActivity() {
         if (glsl) {
             paint(GLSL_KEYWORD, 0xFF569CD6.toInt())
             paint(GLSL_API, 0xFF4EC9B0.toInt())
+        } else if (cpp) {
+            paint(CPP_KEYWORD, 0xFF569CD6.toInt())
+            paint(CPP_TYPE, 0xFF4EC9B0.toInt())
+            paint(CPP_PRE, 0xFFC586C0.toInt())
         } else {
             paint(KEYWORD, 0xFF569CD6.toInt())
             paint(API, 0xFF4EC9B0.toInt())
@@ -202,14 +209,28 @@ class ScriptEditorActivity : AppCompatActivity() {
         paint(COMMENT, 0xFF6A9955.toInt())
     }
 
+    /** Compiles the C++ script with the native VM and jumps to the first error. */
+    private fun checkCpp() {
+        val src = editor.text.toString()
+        val err = com.sengine.engine.script.NativeScripts.check(asset, src)
+        if (err == null) { status.text = "✓ C++ compiled OK — native VM ${com.sengine.engine.script.NativeScripts.version().substringAfter("Native ").substringBefore(" ")}"; return }
+        status.text = "✖ $err"
+        Regex("line (\\d+)").find(err)?.groupValues?.get(1)?.toIntOrNull()?.let { line ->
+            var pos = 0
+            repeat(line - 1) { pos = src.indexOf('\n', pos).let { i -> if (i < 0) src.length else i + 1 } }
+            editor.requestFocus()
+            editor.setSelection(pos.coerceIn(0, src.length))
+        }
+    }
+
     private fun showApi() {
-        val tv = label(if (glsl) GLSL_DOC else API_DOC, 12f, C.TEXT).apply {
+        val tv = label(if (glsl) GLSL_DOC else if (cpp) CPP_DOC else API_DOC, 12f, C.TEXT).apply {
             typeface = Typeface.MONOSPACE
             setPadding(dp(18), dp(10), dp(18), dp(10))
             setTextIsSelectable(true)
         }
         MaterialAlertDialogBuilder(this)
-            .setTitle(if (glsl) "S Engine Shaders" else "S Engine Script API")
+            .setTitle(if (glsl) "S Engine Shaders" else if (cpp) "S Engine C++ API" else "S Engine Script API")
             .setView(ScrollView(this).apply { addView(tv) })
             .setPositiveButton("Close", null)
             .show()
@@ -221,6 +242,9 @@ class ScriptEditorActivity : AppCompatActivity() {
         private val FUNC = Regex("\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()")
         private val GLSL_KEYWORD = Regex("\\b(float|int|bool|void|vec2|vec3|vec4|mat2|mat3|mat4|sampler2D|if|else|for|return|discard|const|uniform|varying|precision|mediump|highp|lowp|true|false)\\b")
         private val GLSL_API = Regex("\\b(uTime|uParam|uTex|uColor|uUseTex|uResolution|texture2D|mix|clamp|smoothstep|step|fract|floor|sin|cos|dot|length|normalize|pow|abs|max|min|mod|distance)\\b")
+        private val CPP_KEYWORD = Regex("\\b(class|struct|public|private|protected|virtual|override|static|const|constexpr|return|if|else|for|while|do|break|continue|new|delete|this|true|false|nullptr|switch|case|default|enum|namespace|using|auto|template|typename|operator|inline|final|Super)\\b")
+        private val CPP_TYPE = Regex("\\b(void|int|float|double|bool|char|long|short|unsigned|size_t|int32|string|vector|map|unordered_map|std|Vec3|FVector|FString|GameObject|Behaviour|AActor|Input|Scene|Time|Audio|UI|Storage|Platform|Voxel|Math|FMath|cout|endl|gameObject)\\b")
+        private val CPP_PRE = Regex("(?m)^\\s*#[^\\n]*|\\b(UPROPERTY|UFUNCTION|GENERATED_BODY|UE_LOG|TEXT)\\b")
         private val NUMBER = Regex("\\b\\d+(\\.\\d+)?\\b")
         private val STRING = Regex("\"(\\\\.|[^\"\\\\\\n])*\"|'(\\\\.|[^'\\\\\\n])*'")
         private val COMMENT = Regex("//[^\\n]*|/\\*[\\s\\S]*?\\*/")
@@ -344,6 +368,77 @@ PARAMS  "speed=5, jump=10" in the Script
         component become variables.
 
 BLUEPRINTS  .bp files compile to this API.
+""".trimIndent()
+
+        val CPP_DOC = """
+C++ SCRIPTS (.cpp) run natively in the S Engine
+C++ VM (libsengine.so). Write a class that
+derives from Behaviour (or AActor):
+
+  #include "SEngine.h"
+  class Player : public Behaviour {
+  public:
+      float speed = 5.0f;          // params
+      void Start() override { }
+      void Update(float dt) override {
+          gameObject.x += Input::AxisX() * speed * dt;
+      }
+      void OnCollision(GameObject other) { }
+  };
+
+LIFECYCLE  Start/BeginPlay  Update/Tick(dt)
+  OnCollision(o)  OnTrigger(o)  OnTriggerExit(o)
+  OnTap()  OnUIClick(name)  OnDestroy()  OnStop()
+
+LANGUAGE  classes + inheritance, constructors
+  with init lists, static members, enums, enum
+  class, int/float/double/bool/auto, if/else,
+  for, range-for, while, do, switch, ternary,
+  casts (static_cast / C-style), recursion,
+  std::string, std::vector, std::map,
+  std::cout << … << std::endl, printf, Vec3
+  (FVector), UE_LOG, UPROPERTY/GENERATED_BODY
+  are accepted. Not yet: templates, lambdas,
+  pointers arithmetic, exceptions.
+
+GAMEOBJECT  gameObject / self / any object
+  x y z rotX rotY rotation scaleX..Z vx vy vz
+  position velocity eulerAngles scale (Vec3)
+  name tag active visible color text grounded
+  SetPosition(Vec3|x,y,z) Move/Translate(...)
+  Rotate(rx,ry,rz) LookAt(o) Destroy()
+  AddForce(x,y,z) Play("Run.anim") Burst(n)
+  SendMessage("fn", arg) CompareTag("Enemy")
+  Unreal names work too: GetActorLocation()
+  SetActorLocation(v) GetActorForwardVector()
+  AddActorWorldOffset(v) K2_DestroyActor()
+  …plus every method of the JavaScript API.
+
+STATIC API  (same as JS, C++ style)
+  Input::AxisX() Input::A() Input::Button("Fire")
+  Scene::Find("Name") Scene::FindAll("tag")
+  Scene::Spawn("Enemy", Vec3(0,1,0))
+  Scene::Load("Level2") Scene::RaycastHit(…)
+  Time::deltaTime Time::time Time::scale
+  Audio::Play("hit.wav") Audio::PlayMusic(s)
+  UI::SetText("Score", "12") UI::Show(name)
+  Storage::Set(k,v) Storage::GetNumber(k,0)
+  Platform::Vibrate(30) Voxel::SetBlock(…)
+  Find(n) Spawn(n, v) Destroy(o) Raycast(o,d,m)
+
+MATH  sin cos tan atan2 sqrt pow abs floor
+  ceil round min max clamp lerp sign fmod
+  Random(a,b) RandomInt(a,b) MoveTowards
+  SmoothDamp Distance(a,b) Dot Cross
+  FMath::/Mathf::/Math:: prefixes work.
+  Vec3: + - * / Length() Normalized() Dot()
+  Cross() Distance() Vec3::Up/Zero/Forward
+
+LOGGING  Log(...)  Warn(m)  Error(m)
+  std::cout << x << std::endl;  printf("%d", n)
+  UE_LOG(LogTemp, Warning, TEXT("%d"), n)
+
+Tap "Check" to compile and jump to errors.
 """.trimIndent()
 
         val GLSL_DOC = """

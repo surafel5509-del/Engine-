@@ -54,6 +54,12 @@ object GameDoctor {
             }
         }
 
+        for (cpp in assets.filter { com.sengine.engine.script.ScriptSystem.isCpp(it) }) {
+            if (!com.sengine.engine.script.NativeScripts.available) break
+            val src = project.readAsset(cpp) ?: continue
+            com.sengine.engine.script.NativeScripts.check(cpp, src)?.let { out += Issue(2, "C++ error in $cpp", it) }
+        }
+
         // ---------------------------------------------------------------- scenes
         var totalObjects = 0
         for (name in scenes) {

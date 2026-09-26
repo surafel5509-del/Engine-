@@ -353,6 +353,9 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             collectMesh(go, mr)
             if (mr.castShadows) for (i in start until itemCount) casters.add(items[i].mesh!! to items[i].model)
         }
+        val landStart = itemCount
+        collectLandscapes(scene)
+        for (i in landStart until itemCount) casters.add(items[i].mesh!! to items[i].model)
         val voxelStart = itemCount
         collectVoxels(scene)
         for (i in voxelStart until itemCount) casters.add(items[i].mesh!! to items[i].model)
@@ -432,6 +435,38 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     private fun meshOf(mr: MeshRenderer): Mesh = if (mr.mesh == MeshRenderer.MESHES.size - 1) {
         (if (mr.model.isNotBlank() && !isSModel(mr)) Meshes.model(engine.project.assetFile(mr.model)) else null) ?: Meshes.primitive(0)
     } else Meshes.primitive(mr.mesh)
+
+    // ------------------------------------------------------------------ landscapes (native terrain)
+    private class LandGpu(val version: Int, val mesh: Mesh, val mr: MeshRenderer)
+    private val landMeshes = HashMap<Long, LandGpu>()
+    private val landM = FloatArray(16)
+
+    private fun collectLandscapes(scene: com.sengine.engine.core.Scene) {
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val land = go.get<com.sengine.engine.core.Landscape>() ?: continue
+            land.ensure()
+            val data = land.mesh ?: continue
+            var g = landMeshes[go.id]
+            if (g == null || g.version != land.version) {
+                g?.mesh?.release()
+                g = LandGpu(land.version, Mesh(data), MeshRenderer().apply { specular = 0.05f; shininess = 6f; color = -1 })
+                landMeshes[go.id] = g
+            }
+            g.mr.tiling = if (land.texture.isNotBlank()) land.tiling else 1f
+            val tex = when {
+                land.texture.isNotBlank() -> textures.image(land.texture)
+                land.paint -> {
+                    val key = "landscape_${go.id}_${land.version}_${land.sandColor}_${land.grassColor}_${land.rockColor}_${land.snowColor}"
+                    textures.generated(key, false) { android.graphics.Bitmap.createBitmap(land.colorMap(256), 256, 256, android.graphics.Bitmap.Config.ARGB_8888) }
+                }
+                else -> null
+            }
+            val w = go.world3
+            Mat4.trs(landM, w[12], w[13], w[14], 0f, 0f, 0f, 1f, 1f, 1f)
+            addItem(g.mesh, landM, g.mr, tex, null)
+        }
+    }
 
     // ------------------------------------------------------------------ voxel worlds
     private class VoxelGpu(val data: com.sengine.engine.voxel.VoxelData) {

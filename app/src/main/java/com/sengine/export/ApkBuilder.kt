@@ -79,7 +79,7 @@ object ApkBuilder {
                     }
                     if (hasIcon && name == cfg.iconEntry) data = cfg.iconPng!!
                     val stored = e.method == ZipEntry.STORED || name == "resources.arsc"
-                    writer.add(name, data, compress = !stored, align = if (name.endsWith(".so")) 4096 else 4)
+                    writer.add(name, data, compress = !stored, align = if (name.endsWith(".so")) 16384 else 4)
                     if (i % 20 == 0) progress("Packing runtime ($i/${entries.size})…", 0.05f + 0.6f * i / entries.size)
                 }
                 progress("Embedding game data…", 0.7f)

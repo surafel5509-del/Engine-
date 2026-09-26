@@ -266,6 +266,28 @@ class SObject(private val go: GameObject, private val engine: Engine, private va
 }
 
 class SScene(private val engine: Engine, private val sys: ScriptSystem) {
+    /** World-space height of the first active Landscape at (x, z); `fallback` (default 0) when there is none / outside it. */
+    @JvmOverloads fun terrainHeight(x: Double, z: Double, fallback: Double = 0.0): Double {
+        for (go in engine.scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val land = go.get<com.sengine.engine.core.Landscape>() ?: continue
+            val w = go.world3
+            val lx = x.toFloat() - w[12]; val lz = z.toFloat() - w[14]
+            if (!land.contains(lx, lz)) continue
+            return (land.heightAt(lx, lz) + w[13]).toDouble()
+        }
+        return fallback
+    }
+    fun terrainNormal(x: Double, z: Double): Any? {
+        for (go in engine.scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val land = go.get<com.sengine.engine.core.Landscape>() ?: continue
+            val w = go.world3
+            val n = land.normalAt(x.toFloat() - w[12], z.toFloat() - w[14])
+            return sys.newObject(mapOf("x" to n[0].toDouble(), "y" to n[1].toDouble(), "z" to n[2].toDouble()))
+        }
+        return sys.newObject(mapOf("x" to 0.0, "y" to 1.0, "z" to 0.0))
+    }
     fun getName(): String = engine.scene.name
     fun find(name: String): Any? = engine.scene.find(name)?.let { sys.toJs(it) }
     fun findAll(tag: String): Any? =

@@ -106,6 +106,9 @@ class PhysicsWorld3D {
         // voxel terrain
         val vox = voxelOf(scene)
         if (vox != null) for (b in bodies) if (b.dynamic && !b.col.isTrigger) collideVoxels(b, vox.first, vox.second)
+        // native landscapes
+        val lands = landscapes(scene)
+        if (lands.isNotEmpty()) for (b in bodies) if (b.dynamic && !b.col.isTrigger) for (l in lands) collideLandscape(b, l.first, l.second)
 
         // broadphase: sweep and prune on X
         bodies.sortBy { it.minX() }
@@ -160,6 +163,32 @@ class PhysicsWorld3D {
             if (rb.bodyType != 0) continue
             if (speed2(rb) < SLEEP_SPEED2 && rb.grounded) rb.sleepTime += dt else rb.sleepTime = 0f
         }
+    }
+
+    private fun landscapes(scene: Scene): List<Pair<GameObject, com.sengine.engine.core.Landscape>> {
+        var out: ArrayList<Pair<GameObject, com.sengine.engine.core.Landscape>>? = null
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val l = go.get<com.sengine.engine.core.Landscape>() ?: continue
+            l.ensure()
+            (out ?: ArrayList<Pair<GameObject, com.sengine.engine.core.Landscape>>().also { out = it }).add(go to l)
+        }
+        return out ?: emptyList()
+    }
+
+    /** Keeps a body on top of a landscape height field (with slope-aware friction). */
+    private fun collideLandscape(b: Body, lgo: GameObject, land: com.sengine.engine.core.Landscape) {
+        val w = lgo.world3
+        val lx = b.cx - w[12]; val lz = b.cz - w[14]
+        if (!land.contains(lx, lz)) return
+        val ground = land.heightAt(lx, lz) + w[13]
+        val bottom = if (b.sphere) b.cy - b.r else b.cy - b.hy
+        if (bottom >= ground) return
+        move(b.go, 0f, ground - bottom, 0f)
+        refresh(b)
+        val rb = b.rb ?: return
+        if (rb.vy < 0f) rb.vy = if (rb.bounciness > 0f && rb.vy < -2f) -rb.vy * rb.bounciness else 0f
+        rb.grounded = true
     }
 
     private fun speed2(rb: Rigidbody3D) = rb.vx * rb.vx + rb.vy * rb.vy + rb.vz * rb.vz
@@ -329,6 +358,35 @@ class PhysicsWorld3D {
                     else if (abs(ey) >= abs(ez)) ny = if (ey > 0) 1f else -1f else nz = if (ez > 0) 1f else -1f
                 }
                 best = RayHit(go, hx, hy, hz, nx, ny, nz, t)
+            }
+        }
+        // landscapes: march the ray over the height field, then refine by bisection
+        for (lgo in scene.objects) {
+            if (!lgo.isActiveInHierarchy() || lgo === ignore) continue
+            val land = lgo.get<com.sengine.engine.core.Landscape>() ?: continue
+            val w = lgo.world3
+            val step = max(0.25f, land.size / land.resolution * 0.5f)
+            var prevT = 0f
+            var t = 0f
+            while (t <= bestT) {
+                val x = ox + dx * t - w[12]; val y = oy + dy * t - w[13]; val z = oz + dz * t - w[14]
+                if (land.contains(x, z) && y <= land.heightAt(x, z)) {
+                    var lo = prevT; var hi = t
+                    repeat(12) {
+                        val m = (lo + hi) / 2
+                        val mx = ox + dx * m - w[12]; val my = oy + dy * m - w[13]; val mz = oz + dz * m - w[14]
+                        if (land.contains(mx, mz) && my <= land.heightAt(mx, mz)) hi = m else lo = m
+                    }
+                    if (hi < bestT) {
+                        bestT = hi
+                        val hx = ox + dx * hi; val hz = oz + dz * hi
+                        val nrm = land.normalAt(hx - w[12], hz - w[14])
+                        best = RayHit(lgo, hx, oy + dy * hi, hz, nrm[0], nrm[1], nrm[2], hi)
+                    }
+                    break
+                }
+                prevT = t
+                t += step
             }
         }
         if (voxels) voxelOf(scene)?.let { (vgo, v) ->
