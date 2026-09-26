@@ -218,6 +218,10 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         }
     }
 
+    /** Number of live script instances (optionally only those running [script]) — used by the profiler and tests. */
+    fun instanceCount(script: String? = null): Int = instances.count { script == null || it.comp.script == script }
+    fun startedCount(script: String? = null): Int = instances.count { it.started && (script == null || it.comp.script == script) }
+
     fun sendMessage(go: GameObject, fname: String, arg: Any?): Any? {
         var result: Any? = null
         for (inst in instances.toList()) {
