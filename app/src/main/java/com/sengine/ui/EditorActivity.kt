@@ -501,8 +501,30 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         val m3 = pm.menu.addSubMenu("3D Object")
         listOf("Cube", "Sphere", "Plane", "Cylinder", "Cone", "Torus", "Capsule", "Pyramid",
             "Physics Cube 3D", "Physics Sphere 3D", "Ground 3D", "3D Camera", "Directional Light", "Point Light").forEach { m3.add(it) }
-        pm.setOnMenuItemClickListener { if (!it.hasSubMenu()) createObject(it.title.toString()); true }
+        val p2 = pm.menu.addSubMenu("Prefabs 2D (water, fire, weather…)")
+        com.sengine.project.Prefabs.PREFABS_2D.forEach { p2.add(it) }
+        val p3 = pm.menu.addSubMenu("Prefabs 3D (lake, campfire, lamps…)")
+        com.sengine.project.Prefabs.PREFABS_3D.forEach { p3.add(it) }
+        pm.setOnMenuItemClickListener {
+            if (!it.hasSubMenu()) {
+                val t = it.title.toString()
+                if (t in com.sengine.project.Prefabs.PREFABS_2D || t in com.sengine.project.Prefabs.PREFABS_3D) createPrefab(t) else createObject(t)
+            }
+            true
+        }
         pm.show()
+    }
+
+    private fun createPrefab(name: String) {
+        history.record(state.selectedId)
+        val go = synchronized(engine.lock) {
+            val x = if (state.mode3D) snap(state.orbitX) else snap(state.view.cx)
+            val y = if (state.mode3D) snap(state.orbitY) else snap(state.view.cy)
+            val z = if (state.mode3D) snap(state.orbitZ) else 0f
+            com.sengine.project.Prefabs.create(engine.scene, name, x, y, z)
+        }
+        refreshHierarchy()
+        select(go.id)
     }
 
     private fun createObject(kind: String) {

@@ -94,4 +94,17 @@ class EngineV4Test {
         assertEquals(2, back.frames.size); assertEquals(16, back.width)
         assertEquals(0xFFFF0000.toInt(), back.composite(0)[4 * 16 + 4])
     }
+
+    @Test
+    fun prefabsBuildAndRun() {
+        val s = Scene("Main")
+        var x = 0f
+        for (n in com.sengine.project.Prefabs.PREFABS_2D + com.sengine.project.Prefabs.PREFABS_3D) { com.sengine.project.Prefabs.create(s, n, x, 0f, 0f); x += 30f }
+        val count = s.objects.size
+        val e = run(s)
+        e.frames(120)
+        println("SIM prefabs objects=$count after=${e.scene.objects.size}")
+        assertTrue(count >= 24)
+        assertTrue(SceneSerializer.toJson(e.scene).toString().contains("Water"))
+    }
 }
