@@ -174,6 +174,12 @@ class NativeHost(private val engine: Engine, private val sys: ScriptSystem, inpu
             target.javaClass.methods.filter { it.name.lowercase() == lowerName && it.declaringClass != Any::class.java }
         }
 
+    private val fieldCache = HashMap<String, java.lang.reflect.Field?>()
+    private fun fieldOf(target: Any, lowerName: String): java.lang.reflect.Field? =
+        fieldCache.getOrPut(target.javaClass.name + "." + lowerName) {
+            target.javaClass.fields.firstOrNull { it.name.lowercase() == lowerName && !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+        }
+
     private fun candidates(target: Any, name: String, arity: Int): List<Method> {
         val l = name.lowercase()
         val names = linkedSetOf(l)
@@ -196,6 +202,16 @@ class NativeHost(private val engine: Engine, private val sys: ScriptSystem, inpu
             // Vec3 arguments expand to x, y, z: SetPosition(Vec3(1,2,3)) -> setPosition(1, 2, 3)
             callArgs = expandVectors(args)
             pick = (if (mode.isEmpty()) candidates(target, name, callArgs.size) else list).firstOrNull { compatible(it, callArgs) }
+        }
+        if (pick == null) {
+            // public @JvmField fields (e.g. Input::AxisX / GetAxisX / input.aDown)
+            val l0 = if (mode.isEmpty() && callArgs.isEmpty()) l.removePrefix("get").removePrefix("is") else l
+            val fname = if (mode.isEmpty() && callArgs.size == 1 && l.startsWith("set")) l.removePrefix("set") else l0
+            val field = fieldOf(target, fname) ?: fieldOf(target, l)
+            if (field != null) {
+                if (callArgs.isEmpty() && mode != "set") return field.get(target)
+                if (callArgs.size == 1 && mode != "get") { field.set(target, convert(callArgs[0], field.type)); return null }
+            }
         }
         if (pick == null) {
             val what = if (target is SObject) "GameObject" else target.javaClass.simpleName.removePrefix("S")
