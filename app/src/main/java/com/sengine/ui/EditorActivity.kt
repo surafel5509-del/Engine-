@@ -175,8 +175,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         })
     }
 
+    private var reloadSceneOnResume = false
+
     override fun onResume() {
         super.onResume()
+        if (reloadSceneOnResume) { reloadSceneOnResume = false; if (engine.mode == Engine.Mode.EDIT) openScene(engine.scene.name) }
         glView.onResume()
         handler.post(ticker)
         refreshAssets()
@@ -301,8 +304,10 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         tabs.addView(View(this), lp(0, 1, 1f))
         assetButtons = hbox()
         assetButtons.addView(button("+ Script") { newScriptDialog { refreshAssets(); openScript(it) } }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("🛒 Store") { startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("Store") { startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Blueprint") { newAssetDialog("New Blueprint", "NewBlueprint", "bp", { com.sengine.engine.blueprint.Blueprint.defaultGraph().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("+ Sprite") { saveScene(silent = true); startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("+ Texture") { saveScene(silent = true); startActivity(Intent(this, TextureStudioActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Shader") { newAssetDialog("New Shader", "NewShader", "glsl", { Templates.NEW_SHADER }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Animation") { newAssetDialog("New Animation", "NewAnimation", "anim", { com.sengine.engine.anim.AnimationClip().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Song") { newAssetDialog("New Song", "Theme", "song", { MusicEditorActivity.newSongJson(it.substringBeforeLast('.')) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
@@ -600,7 +605,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private fun mainMenu(anchor: View) {
         val pm = PopupMenu(this, anchor)
         val entries = listOf(
-            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "Asset Store", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
+            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
             (if (state.showProfiler) "Hide" else "Show") + " Profiler",
             (if (state.showGrid) "Hide" else "Show") + " Grid",
             (if (state.showColliders) "Hide" else "Show") + " Colliders",
@@ -617,6 +622,13 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Build APK…" -> { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
                 t == "Asset Store" -> startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name))
                 t == "Animation Editor" -> openAnimationEditor(null)
+                t == "AI Agent" -> { saveScene(silent = true); startActivity(Intent(this, AgentActivity::class.java)) }
+                t == "Sprite Studio" -> { saveScene(silent = true); startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name)) }
+                t == "Texture Studio" -> { saveScene(silent = true); startActivity(Intent(this, TextureStudioActivity::class.java).putExtra("project", project.name)) }
+                t == "UI Creator" -> {
+                    saveScene(silent = true); reloadSceneOnResume = true
+                    startActivity(Intent(this, UICreatorActivity::class.java).putExtra("project", project.name).putExtra("scene", engine.scene.name))
+                }
                 t == "Music Editor" -> { saveScene(silent = true); startActivity(Intent(this, MusicEditorActivity::class.java).putExtra("project", project.name)) }
                 t == "3D Model Editor" -> { saveScene(silent = true); startActivity(Intent(this, ModelEditorActivity::class.java).putExtra("project", project.name)) }
                 t == "Controls Editor" -> { saveScene(silent = true); startActivity(Intent(this, ControlsEditorActivity::class.java).putExtra("project", project.name)) }
@@ -631,7 +643,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Toggle Bottom Panel" -> toggle(bottomPanel)
                 t == "Script API Reference" -> showText("Script API", ScriptEditorActivity.API_DOC)
                 t.startsWith("About") -> showText("About S Engine",
-                    "S Engine Full Edition 3.0\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
+                    "S Engine 3rd Edition\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
                         "• 3D: meshes, OBJ models, Blinn-Phong lights, fog, sky, 3D physics, orbit editor\n" +
                         "• Sprite animation editor, asset store, visual blueprints, GLSL shaders & post FX\n" +
                         "• Build real installable APKs of your game\n" +
@@ -757,7 +769,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         val sel = synchronized(engine.lock) { engine.scene.findById(state.selectedId) }
         when (kind) {
             AssetKind.SCRIPT -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Attach to ${sel.name}") }
-            AssetKind.TEXTURE -> { pm.menu.add("Create Sprite"); if (sel != null) pm.menu.add("Assign to ${sel.name}") }
+            AssetKind.TEXTURE -> { pm.menu.add("Create Sprite"); pm.menu.add("Edit in Sprite Studio"); if (sel != null) pm.menu.add("Assign to ${sel.name}") }
             AssetKind.SOUND -> { pm.menu.add("Preview"); if (sel != null) pm.menu.add("Add AudioSource to ${sel.name}") }
             AssetKind.SHADER -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Use shader on ${sel.name}") }
             AssetKind.ANIMATION -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Play on ${sel.name}") }
@@ -776,6 +788,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                         setDataSource(project.assetFile(name).absolutePath); setOnCompletionListener { it.release() }; prepare(); start()
                     }
                 } catch (e: Exception) { toast("Can't play: ${e.message}") }
+                t == "Edit in Sprite Studio" -> startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name).putExtra("file", name))
                 t == "Create Sprite" -> {
                     history.record(state.selectedId)
                     val go = synchronized(engine.lock) {

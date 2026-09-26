@@ -40,7 +40,9 @@ object PngEncoder {
     }
 
     /** Decodes PNGs written by [encode] (8-bit RGBA or RGB, non-interlaced). Returns null for other formats. */
-    fun decode(bytes: ByteArray): Triple<Int, Int, IntArray>? = try {
+    fun decode(bytes: ByteArray): Triple<Int, Int, IntArray>? = decodeOrNull(bytes)
+
+    private fun decodeOrNull(bytes: ByteArray): Triple<Int, Int, IntArray>? { try {
         val inp = java.io.DataInputStream(bytes.inputStream())
         inp.skipBytes(8)
         var w = 0; var h = 0; var ct = 6
@@ -86,6 +88,6 @@ object PngEncoder {
             }
             System.arraycopy(cur, 0, prev, 0, stride)
         }
-        Triple(w, h, px)
-    } catch (_: Exception) { null }
+        return Triple(w, h, px)
+    } catch (_: Exception) { return null } }
 }
