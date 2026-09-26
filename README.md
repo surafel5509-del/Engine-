@@ -1,8 +1,20 @@
-# S Engine — 3rd Edition
+# S Engine — v5 Native Edition
 
-**S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet – think "a small Unity in your pocket". Create a project, build scenes with a hierarchy / inspector / gizmos, write JavaScript behaviours in the built-in code editor, press **Play** to test immediately, then run your game full-screen.
+**S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 
-> Written from scratch in Kotlin. OpenGL ES 2.0 renderer (2D + 3D), custom 2D/3D physics, Mozilla Rhino JavaScript runtime, visual blueprints, custom GLSL shaders, and an on-device APK builder. No NDK, no external game frameworks.
+> Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
+
+## ⚙️ v5 Native Edition
+
+| Area | What's new |
+|---|---|
+| **NDK project structure** | `app/src/main/cpp` with `CMakeLists.txt` → `libsengine.so` (C++17, `c++_static`, `-O3`, 16 KB page-size aligned) for 3 ABIs, JNI bridge `jni/NativeBridge.cpp`, Gradle `externalNativeBuild`. The APK builder carries the native libraries into exported games. CI builds the NDK library, runs **native host tests**, and runs the JVM tests against a host build of the same C++ code |
+| **C++ scripting** | Write behaviours as `.cpp` files: `class Player : public Behaviour { float speed = 5; void Start() override {...} void Update(float dt) override {...} };`. Supported C++: classes, inheritance, constructors with init lists, `enum class`, functions, recursion, `auto`, range-for, `switch`, `std::string` / `std::vector` / `std::map`, `Vec3` maths, casts, `printf` / `std::cout`. **Unreal-style names** work too (`FVector`, `UE_LOG`, `GetActorLocation()`, `BeginPlay` / `Tick`), and `#include`s and `std::` are accepted. Public fields become Inspector params. The whole engine API is reachable: `Input::`, `Scene::`, `Audio::`, `UI::`, `Time::`, `Platform::`, `Storage::`, `Voxel::`, plus `gameObject.*`. C++ and JS scripts can message each other with `SendMessage` / `send()` |
+| **C++ editor tooling** | C++ syntax highlighting, **Check** button (native compile with line-accurate errors), C++ API reference, "New C++ Script" template, Game Doctor compiles every `.cpp`. Runtime errors report file + line and are guarded against runaway loops |
+| **Landscape (C++ terrain)** | New `Landscape` component, generated natively: fBm + **ridged mountains**, island falloff, terraces and **droplet hydraulic erosion**, up to 257² vertices. Auto-painted sand / grass / rock / snow by height and slope, or your own texture. Casts shadows, **collides with Rigidbody3D** and is hit by `raycastHit`. Scripts can call `scene.terrainHeight(x, z)` / `Scene::TerrainHeight` and `terrainNormal` |
+| **New sample: Native World** | Open-world island where **all gameplay is C++**: `PlayerController.cpp` (third-person move / sprint / jump / respawn), `WorldBuilder.cpp` (places a forest and crystals on the terrain), `Crystal.cpp`, `GameManager.cpp` (HUD, timer, win). Includes a lake, fog, shadows and a pause menu |
+
+**How far it goes:** this is not literally Unreal Engine 5. C++ scripts run in S Engine's embedded C++-subset interpreter inside `libsengine.so`, not as machine code compiled on the phone (no mobile toolchain can do that inside an app). Templates, pointers/new and the full STL are not supported. The renderer is still OpenGL ES 2.0 (no Nanite/Lumen).
 
 ## 🖤 3rd Edition (v4)
 
