@@ -108,7 +108,8 @@ object AssetPacksV3 {
                 listOf(file), "♫", sound = { Song.compose(i, 7).renderWav() }) { p -> p.writeAsset(file, Song.compose(i, 7).also { it.name = style }.toJson().toString(2)) }
         }
         // ------------------------------------------------------------ editable 3D models
-        val modelFiles = listOf("Car.smodel", "Character.smodel", "TreeModel.smodel", "HouseModel.smodel", "Sword.smodel", "RockModel.smodel", "Spaceship.smodel", "Turret.smodel")
+        val modelFiles = listOf("Car.smodel", "Character.smodel", "TreeModel.smodel", "HouseModel.smodel", "Sword.smodel", "RockModel.smodel", "Spaceship.smodel", "Turret.smodel",
+            "Humanoid.smodel", "Table.smodel", "Chair.smodel", "StudioLamp.smodel", "Crate.smodel", "Barrel.smodel", "Bottle.smodel")
         ModelPresets.NAMES.forEachIndexed { i, n ->
             val m = ModelPresets.build(i)
             val clips = if (m.clips.isEmpty()) "" else " • clips: " + m.clips.joinToString { it.name }
