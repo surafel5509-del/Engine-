@@ -123,8 +123,8 @@ class Renderer3D {
     private val skyColor = FloatArray(3)
 
     fun setSkyColor(c: Int) { skyColor[0] = GL.r(c); skyColor[1] = GL.g(c); skyColor[2] = GL.b(c) }
-    private val skyHorizon = floatArrayOf(0.75f, 0.85f, 0.94f)
-    fun setSkyHorizon(c: Int) { skyHorizon[0] = GL.r(c); skyHorizon[1] = GL.g(c); skyHorizon[2] = GL.b(c) }
+    private val skyHorizonRgb = floatArrayOf(0.75f, 0.85f, 0.94f)
+    fun setSkyHorizon(c: Int) { skyHorizonRgb[0] = GL.r(c); skyHorizonRgb[1] = GL.g(c); skyHorizonRgb[2] = GL.b(c) }
 
     private fun ensureShadowTarget(size: Int) {
         if (depthProg == 0 || shadowGen != Meshes.contextGen) {
@@ -248,7 +248,7 @@ class Renderer3D {
         GLES20.glUniform3f(p.uCamPos, view.eye[0], view.eye[1], view.eye[2])
         GLES20.glUniform3fv(p.uAmbient, 1, ambient, 0)
         if (p.uSkyColor >= 0) GLES20.glUniform3fv(p.uSkyColor, 1, skyColor, 0)
-        if (p.uSkyHorizon >= 0) GLES20.glUniform3fv(p.uSkyHorizon, 1, skyHorizon, 0)
+        if (p.uSkyHorizon >= 0) GLES20.glUniform3fv(p.uSkyHorizon, 1, skyHorizonRgb, 0)
         if (p.uPbr >= 0) GLES20.glUniform4f(p.uPbr, if (mr.pbr) 1f else 0f, mr.metallic, mr.roughness, mr.normalStrength)
         if (p.uUseNormal >= 0) {
             if (normalTex != null && mr.pbr) {
