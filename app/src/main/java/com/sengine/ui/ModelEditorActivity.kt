@@ -25,7 +25,11 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.sengine.engine.core.AssetKind
 import com.sengine.engine.math.Mat4
+import com.sengine.engine.model.AnimIO
 import com.sengine.engine.model.ModelOps
+import com.sengine.engine.model.ModelStudio
+import com.sengine.engine.model.Rigging
+import com.sengine.engine.model.SJoint
 import com.sengine.engine.model.ModelPresets
 import com.sengine.engine.model.SClip
 import com.sengine.engine.model.SKey
@@ -52,7 +56,7 @@ import kotlin.math.tan
  * Saves `.smodel` (rendered natively by MeshRenderer "Custom Model" incl. animations) and exports OBJ.
  */
 class ModelEditorActivity : AppCompatActivity() {
-    enum class Mode { OBJECT, EDIT, ANIMATE }
+    enum class Mode { OBJECT, EDIT, ANIMATE, RIG }
     enum class Tool { SELECT, MOVE, ROTATE, SCALE }
 
     private lateinit var project: Project
@@ -72,6 +76,11 @@ class ModelEditorActivity : AppCompatActivity() {
     private var snap = false
     private var wireframe = false
     private var xray = false
+    private var showGroups = false
+    // point-and-click rigging
+    private val rigJoints = ArrayList<SJoint>()
+    private var jointIdx = 0
+    private var rigMirror = true
 
     private lateinit var view3d: ModelView
     private lateinit var outliner: LinearLayout
@@ -113,7 +122,7 @@ class ModelEditorActivity : AppCompatActivity() {
         tb.addView(label("3D Model Editor", 10f, C.ACCENT2))
         bar.addView(tb, lp(dp(120), WRAP)); gap()
         val modeBox = hbox().apply { background = round(C.PANEL2, dp(10).toFloat()); setPadding(dp(2), dp(2), dp(2), dp(2)) }
-        modeBtns = listOf("Object" to Mode.OBJECT, "Edit" to Mode.EDIT, "Animate" to Mode.ANIMATE).map { (t, m) ->
+        modeBtns = listOf("Object" to Mode.OBJECT, "Edit" to Mode.EDIT, "Animate" to Mode.ANIMATE, "Rig" to Mode.RIG).map { (t, m) ->
             button(t, C.PANEL2) { setMode(m) }.apply { textSize = 12f }.also { modeBox.addView(it) }
         }
         bar.addView(modeBox); gap(10)
@@ -187,6 +196,11 @@ class ModelEditorActivity : AppCompatActivity() {
         mode = m; playing = false
         selVerts.clear(); selFaces.clear()
         if (m == Mode.ANIMATE && model.clips.isEmpty()) { model.clips += SClip("Idle", 1f, true) }
+        if (m == Mode.RIG) {
+            if (rigJoints.isEmpty()) rigJoints.addAll(if (model.rig.size == Rigging.HUMANOID.size) model.rig.map { SJoint(it.name, it.parent, it.pos.copyOf()) } else Rigging.autoPlace(model))
+            jointIdx = jointIdx.coerceIn(0, rigJoints.size - 1)
+            toast("Rig: tap the model to place the highlighted joint (it advances to the next one). Drag with Move to adjust.")
+        }
         refreshAll()
     }
 
@@ -207,6 +221,7 @@ class ModelEditorActivity : AppCompatActivity() {
         val sel = when (mode) {
             Mode.EDIT -> " • Selected: ${if (faceSelect) "${selFaces.size} faces" else "${selVerts.size} verts"}"
             Mode.ANIMATE -> " • ${clip?.name ?: "-"} ${fmt(time)}s / ${fmt(clip?.length ?: 0f)}s"
+            Mode.RIG -> " • Joint ${jointIdx + 1}/${rigJoints.size}: ${Rigging.HUMANOID.getOrNull(jointIdx)?.label ?: ""}"
             else -> if (p != null) " • ${p.name}" else ""
         }
         stats.text = base + sel + "   |   1 finger: tool • 2 fingers: orbit + pinch zoom • 3 fingers: pan • double-tap: focus"
@@ -349,6 +364,11 @@ class ModelEditorActivity : AppCompatActivity() {
                 tb("check", "All") { selectAll(true) }
                 tb("close", "None") { selectAll(false) }
                 tb("extrude", "Extrude", C.ACCENT) { extrude() }
+                tb("frame", "Bevel") { bevelMenu(bottom) }
+                tb("subdivide", "Loop cut") { loopCut() }
+                tb("layers", "Bridge") { bridge() }
+                tb("palette", "PolyGroups") { groupMenu(bottom) }
+                tb("image", "UV") { uvMenu(bottom) }
                 tb("frame", "Inset") { withFaces { p, f -> ModelOps.inset(p, f, 0.25f) } }
                 tb("subdivide", "Subdivide") { editOp { ModelOps.subdivide(it, false) } }
                 tb("sphere", "Smooth subdiv") { editOp { ModelOps.subdivide(it, true) } }
@@ -361,7 +381,227 @@ class ModelEditorActivity : AppCompatActivity() {
                 tb("rocket", "Randomize") { editOp { p -> val v = selectedVerts(p).ifEmpty { p.verts.indices.toSet() }; for (i in v) for (k in 0 until 3) p.verts[i][k] += (Math.random().toFloat() - 0.5f) * 0.06f } }
             }
             Mode.ANIMATE -> buildTimeline()
+            Mode.RIG -> buildRigBar()
         }
+    }
+
+    // ================================================================ Model Studio: bevel / loop / bridge / groups / UV
+    private fun studio(f: () -> Unit) {
+        if (!ModelStudio.available) { toast("The native engine library isn't available on this device"); return }
+        try { f() } catch (e: Throwable) { toast("Failed: ${e.message}") }
+    }
+
+    private fun bevelMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        val opts = listOf(Triple("Chamfer (0.1)", 0.1f, 1), Triple("Bevel (0.2 × 2)", 0.2f, 2), Triple("Round bevel (0.3 × 4)", 0.3f, 4), Triple("Pillow (0.45 × 5)", 0.45f, 5))
+        opts.forEachIndexed { i, o -> pm.menu.add(0, i, i, o.first) }
+        pm.menu.add(0, 99, 99, "Custom…")
+        pm.setOnMenuItemClickListener { item ->
+            if (item.itemId == 99) askText("Bevel: width, segments, depth", "0.25, 3, 0.08") { t ->
+                val v = t.split(',').map { it.trim().toFloatOrNull() }
+                doBevel(v.getOrNull(0) ?: 0.25f, (v.getOrNull(1) ?: 3f).toInt(), v.getOrNull(2) ?: 0.08f)
+            } else opts[item.itemId].let { doBevel(it.second, it.third, it.second * 0.35f) }
+            true
+        }
+        pm.show()
+    }
+
+    private fun doBevel(width: Float, segments: Int, depth: Float) = studio {
+        withFaces { p, f -> ModelStudio.bevel(p, f, width.coerceIn(0.01f, 0.95f), depth, segments.coerceIn(1, 8)) }
+    }
+
+    private fun loopCut() = studio {
+        val p = part ?: return@studio
+        val edge: Pair<Int, Int>? = when {
+            !faceSelect && selVerts.size == 2 -> selVerts.toList().let { it[0] to it[1] }
+            faceSelect && selFaces.size == 1 -> p.faces.getOrNull(selFaces.first())?.let { it[0] to it[1] }
+            else -> null
+        }
+        if (edge == null) { toast("Loop cut: select 2 connected vertices (an edge) or 1 face"); return@studio }
+        pushUndo()
+        val n = ModelStudio.loopCut(p, edge.first, edge.second, 0.5f)
+        if (n == 0) { undo.removeLastOrNull(); toast("That isn't an edge of a quad loop") ; return@studio }
+        selVerts.clear(); selFaces.clear(); refreshProps(); view3d.invalidate(); updateStats()
+        toast("Loop cut through $n faces")
+    }
+
+    private fun bridge() = studio {
+        val p = part ?: return@studio
+        if (!faceSelect || selFaces.size != 2) { toast("Bridge: select exactly 2 faces"); return@studio }
+        val (a, b) = selFaces.toList()
+        pushUndo()
+        val r = ModelStudio.bridge(p, a, b, 2)
+        selFaces.clear(); selFaces.addAll(r); refreshProps(); view3d.invalidate(); updateStats()
+        toast("Bridged with ${r.size} faces")
+    }
+
+    private fun groupMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        listOf("Auto PolyGroups (sharp 30°)", "Auto PolyGroups (soft 60°)", "Select PolyGroup of selection", "New PolyGroup from selection",
+            (if (showGroups) "✓ " else "") + "Show PolyGroup colours").forEach { pm.menu.add(it) }
+        pm.setOnMenuItemClickListener { item ->
+            val p = part
+            when (item.title.toString().removePrefix("✓ ")) {
+                "Auto PolyGroups (sharp 30°)" -> studio { editOp { toast("${ModelStudio.autoGroups(it, 30f)} PolyGroups") }; showGroups = true }
+                "Auto PolyGroups (soft 60°)" -> studio { editOp { toast("${ModelStudio.autoGroups(it, 60f)} PolyGroups") }; showGroups = true }
+                "Select PolyGroup of selection" -> if (p != null && selFaces.isNotEmpty()) { val g = ModelStudio.groupFaces(p, selFaces); faceSelect = true; selFaces.clear(); selFaces.addAll(g); refreshBottom() } else toast("Select a face first")
+                "New PolyGroup from selection" -> if (p != null && selFaces.isNotEmpty()) { pushUndo(); toast("PolyGroup ${ModelStudio.newGroup(p, selFaces)}"); showGroups = true } else toast("Select faces first")
+                else -> showGroups = !showGroups
+            }
+            view3d.invalidate(); updateStats(); true
+        }
+        pm.show()
+    }
+
+    private fun uvMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        ModelStudio.UV_MODES.forEachIndexed { i, n -> pm.menu.add(0, i, i, "Unwrap: $n") }
+        pm.menu.add(0, 100, 100, "UV preview…"); pm.menu.add(0, 101, 101, "Part texture…"); pm.menu.add(0, 102, 102, "Clear UVs (auto box)")
+        pm.setOnMenuItemClickListener { item ->
+            val p = part
+            when (item.itemId) {
+                100 -> p?.let { showUvPreview(it) }
+                101 -> p?.let { choosePartTexture(it) }
+                102 -> p?.let { editOp { q -> for (i in q.uvs.indices) q.uvs[i] = null } }
+                else -> studio { editOp { ModelStudio.unwrap(it, item.itemId, 1f) }; toast("Unwrapped (${ModelStudio.UV_MODES[item.itemId]})") }
+            }
+            true
+        }
+        pm.show()
+    }
+
+    private fun choosePartTexture(p: SPart) {
+        val tex = listOf("(none)") + project.listAssets(AssetKind.TEXTURE)
+        MaterialAlertDialogBuilder(this).setTitle("Texture for ${p.name}").setItems(tex.toTypedArray()) { _, w ->
+            pushUndo(); p.texture = if (w == 0) "" else tex[w]
+            if (w > 0 && !p.hasUVs) studio { ModelStudio.unwrap(p, 0, 1f) }
+            toast(if (w == 0) "Texture cleared" else "Texture ${tex[w]} (shown in the game view)")
+        }.show()
+    }
+
+    private fun showUvPreview(p: SPart) {
+        p.fixColors()
+        val bmp = p.texture.takeIf { it.isNotBlank() }?.let { try { android.graphics.BitmapFactory.decodeFile(project.assetFile(it).path) } catch (_: Throwable) { null } }
+        val v = object : View(this) {
+            val pt = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f }
+            override fun onDraw(c: Canvas) {
+                val s = min(width, height).toFloat(); val ox = (width - s) / 2
+                c.drawColor(0xFF101010.toInt())
+                if (bmp != null) c.drawBitmap(bmp, null, android.graphics.RectF(ox, 0f, ox + s, s), null)
+                pt.color = 0x55FFFFFF; for (i in 0..4) { val q = s * i / 4; c.drawLine(ox + q, 0f, ox + q, s, pt); c.drawLine(ox, q, ox + s, q, pt) }
+                for ((fi, f) in p.faces.withIndex()) {
+                    val uv = p.uvs.getOrNull(fi) ?: continue
+                    pt.color = if (fi in selFaces) 0xFFFF9F43.toInt() else 0xFFE0E0E0.toInt()
+                    for (k in f.indices) {
+                        val j = (k + 1) % f.size
+                        fun fr(x: Float) = x - kotlin.math.floor(x)
+                        c.drawLine(ox + fr(uv[k * 2]) * s, (1 - fr(uv[k * 2 + 1])) * s, ox + fr(uv[j * 2]) * s, (1 - fr(uv[j * 2 + 1])) * s, pt)
+                    }
+                }
+            }
+        }
+        MaterialAlertDialogBuilder(this).setTitle("UV layout — ${p.name}" + if (p.hasUVs) "" else " (no UVs: automatic box mapping)")
+            .setView(LinearLayout(this).apply { setPadding(dp(12), dp(8), dp(12), 0); addView(v, lp(MATCH, dp(300))) })
+            .setPositiveButton("Close", null).show()
+    }
+
+    // ================================================================ Rig mode
+    private fun buildRigBar() {
+        fun tb(icon: String, text: String, color: Int = C.PANEL2, f: () -> Unit) =
+            bottom.addView(iconTextButton(icon, text, color) { f() }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        val d = Rigging.HUMANOID.getOrNull(jointIdx)
+        bottom.addView(button("● ${d?.label ?: "-"}", C.SEL) { jointMenu(it) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(4), 0))
+        bottom.addView(iconButton("back", "Previous joint", sizeDp = 36) { selectJoint(jointIdx - 1) })
+        bottom.addView(iconButton("forward", "Next joint", sizeDp = 36) { selectJoint(jointIdx + 1) }, lp(dp(36), dp(36)).margins(dp(3), 0, dp(3), 0))
+        bottom.addView(CheckBox(this).apply { text = "Mirror L/R"; setTextColor(C.TEXT); isChecked = rigMirror; setOnCheckedChangeListener { _, b -> rigMirror = b } })
+        tb("wand", "Auto place") { rigJoints.clear(); rigJoints.addAll(Rigging.autoPlace(model)); view3d.invalidate(); toast("Joints placed from the model's proportions") }
+        tb("frame", "Front view") { view3d.setView(0f, 0f) }
+        tb("bone", "Bind rig", C.ACCENT) { bindRig() }
+        tb("help", "How to") {
+            MaterialAlertDialogBuilder(this).setTitle("Point-and-click rigging").setMessage(
+                "1. Use Front view. The highlighted joint is placed where you tap on the model (at the model's mid depth).\n" +
+                "2. After each tap the next joint is selected: hips → spine → chest → neck → head → arms → legs. With Mirror on, placing a left joint also places the right one.\n" +
+                "3. Tap an existing joint to select it; drag with the Move tool to fine-tune.\n" +
+                "4. Bind rig splits the mesh into one part per bone (pivoted at its joint). Then use Animate → Auto for walk / run / jump / wave … or import a .sanim.").setPositiveButton("OK", null).show()
+        }
+    }
+
+    private fun selectJoint(i: Int) { if (rigJoints.isEmpty()) return; jointIdx = (i + rigJoints.size) % rigJoints.size; refreshBottom(); updateStats(); view3d.invalidate() }
+
+    private fun jointMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        Rigging.HUMANOID.forEachIndexed { i, d -> pm.menu.add(0, i, i, (if (i == jointIdx) "● " else "") + d.label) }
+        pm.setOnMenuItemClickListener { selectJoint(it.itemId); true }
+        pm.show()
+    }
+
+    /** Places the current joint (and its mirror); advances to the next joint when [advance]. */
+    private fun placeJoint(pos: FloatArray, advance: Boolean) {
+        val j = rigJoints.getOrNull(jointIdx) ?: return
+        pos.copyInto(j.pos)
+        if (rigMirror) {
+            val (mn, mx) = model.bounds(); val cx = (mn[0] + mx[0]) / 2
+            rigJoints.getOrNull(Rigging.mirrorOf(jointIdx))?.let { m -> m.pos[0] = 2 * cx - pos[0]; m.pos[1] = pos[1]; m.pos[2] = pos[2] }
+        }
+        if (advance) {
+            var n = jointIdx + 1
+            if (rigMirror) while (n < rigJoints.size && Rigging.HUMANOID[n].name.endsWith("_R")) n++
+            if (n < rigJoints.size) jointIdx = n
+            refreshBottom()
+        }
+        updateStats(); view3d.invalidate()
+    }
+
+    private fun bindRig() = studio {
+        val hadClips = model.clips.any { it.tracks.isNotEmpty() }
+        pushUndo()
+        val bound = Rigging.bind(model, rigJoints)
+        model = bound; partIdx = 0; clipIdx = 0; selVerts.clear(); selFaces.clear()
+        val used = bound.parts.count { it.faces.isNotEmpty() }
+        refreshAll()
+        val kinds = listOf("Idle", "Walk", "Run", "Jump", "Wave")
+        val checked = BooleanArray(kinds.size) { true }
+        MaterialAlertDialogBuilder(this).setTitle("Rig bound — $used bones with geometry" + if (hadClips) " (old clips removed)" else "")
+            .setMultiChoiceItems(kinds.toTypedArray(), checked) { _, w, b -> checked[w] = b }
+            .setPositiveButton("Add auto animations") { _, _ ->
+                studio { kinds.filterIndexed { i, _ -> checked[i] }.forEach { ModelStudio.autoAnimate(model, it) }; clipIdx = 0; setMode(Mode.ANIMATE); playing = true; startPlay(); refreshBottom() }
+            }
+            .setNegativeButton("Skip", null).show()
+    }
+
+    // ================================================================ Animate: auto + .sanim
+    private fun autoAnimMenu(anchor: View) {
+        val pm = android.widget.PopupMenu(this, anchor)
+        ModelStudio.AUTO_ANIMATIONS.forEachIndexed { i, n -> pm.menu.add(0, i, i, n) }
+        pm.setOnMenuItemClickListener { item ->
+            studio {
+                pushUndo()
+                val c = ModelStudio.autoAnimate(model, ModelStudio.AUTO_ANIMATIONS[item.itemId])
+                clipIdx = model.clips.indexOf(c).coerceAtLeast(0); time = 0f; playing = true; startPlay(); refreshBottom(); view3d.invalidate()
+                toast("${c.name}: ${c.tracks.size} animated parts" + if (model.rig.isEmpty()) " (tip: rig the model for best results)" else "")
+            }
+            true
+        }
+        pm.show()
+    }
+
+    private fun exportAnim() {
+        val c = clip ?: return
+        val n = project.uniqueAssetName(asset.substringBeforeLast('.') + "_" + c.name.replace(Regex("[^A-Za-z0-9_]"), "") + ".sanim")
+        try { project.writeAsset(n, AnimIO.export(model, c)); toast("Exported $n") } catch (e: Exception) { toast("Export failed: ${e.message}") }
+    }
+
+    private fun importAnim() {
+        val files = project.listAssets().filter { it.endsWith(".sanim") }
+        if (files.isEmpty()) { toast("No .sanim files in Assets — export one from any model first"); return }
+        MaterialAlertDialogBuilder(this).setTitle("Import animation (retargeted)").setItems(files.toTypedArray()) { _, w ->
+            try {
+                pushUndo()
+                val r = AnimIO.import(model, project.readAsset(files[w]) ?: "")
+                clipIdx = model.clips.indexOf(r.clip).coerceAtLeast(0); time = 0f; refreshBottom(); view3d.invalidate()
+                toast("${r.clip.name}: ${r.mapped.size} tracks mapped" + if (r.unmapped.isNotEmpty()) ", ${r.unmapped.size} skipped" else "")
+            } catch (e: Exception) { toast("Import failed: ${e.message}") }
+        }.show()
     }
 
     private fun buildTimeline() {
@@ -377,6 +617,9 @@ class ModelEditorActivity : AppCompatActivity() {
         bottom.addView(iconTextButton("trash", "Del key") { deleteKey() }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         bottom.addView(iconTextButton("clock", "Length ${fmt(c?.length ?: 1f)}s") { editClipLength() }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         bottom.addView(CheckBox(this).apply { text = "Loop"; setTextColor(C.TEXT); isChecked = c?.loop ?: true; setOnCheckedChangeListener { _, b -> c?.loop = b } })
+        bottom.addView(iconTextButton("wand", "Auto", C.ACCENT) { autoAnimMenu(it) }, lp(WRAP, WRAP).margins(dp(4), 0, dp(2), 0))
+        bottom.addView(iconTextButton("upload", "Export .sanim") { exportAnim() }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        bottom.addView(iconTextButton("download", "Import .sanim") { importAnim() }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
     }
 
     private val playTick = object : Runnable {
@@ -842,7 +1085,7 @@ class ModelEditorActivity : AppCompatActivity() {
                     if (!ok) { ptN = start; continue }
                     val lambert = max(0f, nx * light[0] + ny * light[1] + nz * light[2])
                     val head = max(0f, -(nx * fwd[0] + ny * fwd[1] + nz * fwd[2]))
-                    val base = p.faceColors.getOrElse(fi) { 0 }.let { if (it == 0) p.color else it }
+                    val base = if (showGroups && editing) groupColor(p.groups.getOrElse(fi) { 0 }) else p.faceColors.getOrElse(fi) { 0 }.let { if (it == 0) p.color else it }
                     val k = if (facing < 0) 0.25f else 0.32f + 0.5f * lambert + 0.25f * head
                     fDepth[fCount] = depth / f.size; fPart[fCount] = pi; fIdx[fCount] = fi; fColor[fCount] = shade(base, k)
                     fStart[fCount] = start; fLen[fCount] = f.size
@@ -860,6 +1103,7 @@ class ModelEditorActivity : AppCompatActivity() {
                 if (!wireframe) {
                     fill.color = fColor[o]
                     if (xray && editingPart) fill.alpha = 150
+                    if (mode == Mode.RIG) fill.alpha = 110
                     c.drawPath(path, fill)
                 }
                 if (editingPart && faceSelect && fIdx[o] in selFaces) { fill.color = 0x66FF9F43; c.drawPath(path, fill) }
@@ -885,12 +1129,47 @@ class ModelEditorActivity : AppCompatActivity() {
                     c.drawCircle(vx[i], vy[i], if (sel) r * 1.3f else r, fill)
                 }
             }
+            if (mode == Mode.RIG) drawRig(c, tmp, tmp2)
             // gizmo axes at selection pivot
-            drawGizmo(c, tmp, tmp2)
+            if (mode != Mode.RIG) drawGizmo(c, tmp, tmp2)
             // mode label
             text.color = C.DIM
-            c.drawText(when (mode) { Mode.OBJECT -> "Object Mode"; Mode.EDIT -> "Edit Mode — ${if (faceSelect) "faces" else "vertices"}"; Mode.ANIMATE -> "Animate — ${clip?.name ?: ""} ${fmt(time)}s (auto-key)" }, dp(10).toFloat(), dp(18).toFloat(), text)
+            c.drawText(when (mode) { Mode.OBJECT -> "Object Mode"; Mode.EDIT -> "Edit Mode — ${if (faceSelect) "faces" else "vertices"}"; Mode.ANIMATE -> "Animate — ${clip?.name ?: ""} ${fmt(time)}s (auto-key)"; Mode.RIG -> "Rig — tap to place: ${Rigging.HUMANOID.getOrNull(jointIdx)?.label ?: ""}" }, dp(10).toFloat(), dp(18).toFloat(), text)
             if (axisLock >= 0) { text.color = AXIS_COLORS[axisLock]; c.drawText("Axis lock: ${"XYZ"[axisLock]}", dp(10).toFloat(), dp(34).toFloat(), text) }
+        }
+
+        private fun groupColor(g: Int): Int {
+            val h = ((g * 137.508f) % 360f + 360f) % 360f
+            return android.graphics.Color.HSVToColor(floatArrayOf(h, 0.55f, 0.95f))
+        }
+
+        private fun drawRig(c: Canvas, a: FloatArray, b: FloatArray) {
+            stroke.strokeWidth = dp(2.5f).toFloat()
+            for ((i, j) in rigJoints.withIndex()) {
+                val par = rigJoints.getOrNull(j.parent) ?: continue
+                stroke.color = if (i == jointIdx) 0xFFFFD166.toInt() else 0xFFE8E8E8.toInt()
+                line3(c, par.pos[0], par.pos[1], par.pos[2], j.pos[0], j.pos[1], j.pos[2], a, b)
+            }
+            for ((i, j) in rigJoints.withIndex()) {
+                if (project(j.pos[0], j.pos[1], j.pos[2], a) <= 0) continue
+                val sel = i == jointIdx
+                fill.color = if (sel) 0xFFFFD166.toInt() else if (j.name.endsWith("_L")) 0xFF7DD3FC.toInt() else if (j.name.endsWith("_R")) 0xFFFCA5A5.toInt() else 0xFFFFFFFF.toInt()
+                c.drawCircle(a[0], a[1], dp(if (sel) 7f else 4.5f).toFloat(), fill)
+                if (sel) { text.color = 0xFFFFD166.toInt(); c.drawText(Rigging.HUMANOID.getOrNull(i)?.label ?: j.name, a[0] + dp(9), a[1] - dp(6), text) }
+            }
+        }
+
+        /** World point under the screen position at the camera depth of the model centre (joints sit inside the body). */
+        private fun rayPoint(x: Float, y: Float, depthAt: FloatArray): FloatArray {
+            val d = max(0.05f, (depthAt[0] - eye[0]) * fwd[0] + (depthAt[1] - eye[1]) * fwd[1] + (depthAt[2] - eye[2]) * fwd[2])
+            val sx = (x - width / 2f) / focal; val sy = (height / 2f - y) / focal
+            return FloatArray(3) { eye[it] + (fwd[it] + right[it] * sx + up[it] * sy) * d }
+        }
+
+        private fun pickJoint(x: Float, y: Float): Int {
+            val t = FloatArray(3); var best = -1; var bd = dp(22).toFloat()
+            for ((i, j) in rigJoints.withIndex()) { if (project(j.pos[0], j.pos[1], j.pos[2], t) <= 0) continue; val d = hypot(t[0] - x, t[1] - y); if (d < bd) { bd = d; best = i } }
+            return best
         }
 
         private fun buildPath(o: Int) {
@@ -907,6 +1186,7 @@ class ModelEditorActivity : AppCompatActivity() {
         }
 
         private fun pivotWorld(): FloatArray? {
+            if (mode == Mode.RIG) return rigJoints.getOrNull(jointIdx)?.pos?.copyOf()
             val p = part ?: return null
             val m = mats.getOrNull(partIdx) ?: return null
             if (mode == Mode.EDIT) {
@@ -962,6 +1242,13 @@ class ModelEditorActivity : AppCompatActivity() {
 
         private fun tap(x: Float, y: Float) {
             when (mode) {
+                Mode.RIG -> {
+                    val pj = pickJoint(x, y)
+                    if (pj >= 0) { selectJoint(pj); return }
+                    if (pickFace(x, y) == null) { toast("Tap on the model to place ${Rigging.HUMANOID.getOrNull(jointIdx)?.label}"); return }
+                    val (mn, mx) = model.bounds()
+                    placeJoint(rayPoint(x, y, FloatArray(3) { (mn[it] + mx[it]) / 2 }), true)
+                }
                 Mode.EDIT -> {
                     if (faceSelect) {
                         val hit = pickFace(x, y, partIdx)
@@ -995,7 +1282,7 @@ class ModelEditorActivity : AppCompatActivity() {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.x; downY = e.y; lastX = e.x; lastY = e.y; moved = false; fingers = 1; undoPushed = false
-                    val hasSel = when (mode) { Mode.EDIT -> part != null && selectedVerts(part!!).isNotEmpty(); else -> part != null }
+                    val hasSel = when (mode) { Mode.EDIT -> part != null && selectedVerts(part!!).isNotEmpty(); Mode.RIG -> pickJoint(e.x, e.y).also { if (it >= 0) jointIdx = it } >= 0; else -> part != null }
                     dragMode = if (tool != Tool.SELECT && hasSel) 2 else 1
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
@@ -1023,6 +1310,8 @@ class ModelEditorActivity : AppCompatActivity() {
                             lastSpan = s
                         }
                         dragMode == 1 -> { yaw -= dx * 0.4f; pitch = (pitch + dy * 0.4f).coerceIn(-89f, 89f) }
+                        dragMode == 2 && mode == Mode.RIG -> rigJoints.getOrNull(jointIdx)?.let { j ->
+                            val w = worldDelta(dx, dy); placeJoint(FloatArray(3) { j.pos[it] + w[it] }, false) }
                         dragMode == 2 -> { if (!undoPushed) { pushUndo(); undoPushed = true }; transform(dx, dy) }
                     }
                     lastX = x; lastY = y

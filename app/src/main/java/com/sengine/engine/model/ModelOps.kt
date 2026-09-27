@@ -76,7 +76,10 @@ object ModelOps {
         p.fixColors()
         val oldV = p.verts.map { it.copyOf() }
         val faces = p.faces.map { it.copyOf() }
+        p.fixColors()
         val colors = p.faceColors.toList()
+        val oldGroups = p.groups.toList()
+        val newGroups = ArrayList<Int>()
         val nv = oldV.size
         val facePts = faces.map { f -> FloatArray(3).also { c -> for (i in f) for (k in 0 until 3) c[k] += oldV[i][k]; val inv = 1f / f.size.coerceAtLeast(1); for (k in 0 until 3) c[k] = c[k] * inv } }
         // edge -> adjacent faces
@@ -123,12 +126,13 @@ object ModelOps {
             for (k in f.indices) {
                 val prev = f[(k - 1 + f.size) % f.size]; val cur = f[k]; val next = f[(k + 1) % f.size]
                 newFaces.add(intArrayOf(cur, edgeIndex[edgeKey(cur, next)]!!, c, edgeIndex[edgeKey(prev, cur)]!!))
-                newColors.add(colors.getOrElse(fi) { 0 })
+                newColors.add(colors.getOrElse(fi) { 0 }); newGroups.add(oldGroups.getOrElse(fi) { 0 })
             }
         }
         p.verts.clear(); p.verts.addAll(out)
         p.faces.clear(); p.faces.addAll(newFaces)
         p.faceColors.clear(); p.faceColors.addAll(newColors)
+        p.groups.clear(); p.groups.addAll(newGroups); p.uvs.clear(); p.fixColors()
         if (smooth) p.smooth = true
     }
 
@@ -147,8 +151,7 @@ object ModelOps {
         val fc = p.faces.size
         for (fi in 0 until fc) {
             val f = p.faces[fi]
-            p.faces.add(IntArray(f.size) { map[f[f.size - 1 - it]] })
-            p.faceColors.add(p.faceColors[fi])
+            p.addFace(IntArray(f.size) { map[f[f.size - 1 - it]] }, fi)
         }
     }
 
@@ -167,14 +170,19 @@ object ModelOps {
         }
     }
 
-    fun flip(p: SPart, faces: Set<Int>) { for (fi in faces) if (fi in p.faces.indices) p.faces[fi] = p.faces[fi].reversedArray() }
+    fun flip(p: SPart, faces: Set<Int>) {
+        p.fixColors()
+        for (fi in faces) if (fi in p.faces.indices) {
+            p.faces[fi] = p.faces[fi].reversedArray()
+            p.uvs[fi]?.let { u -> val n = u.size / 2; p.uvs[fi] = FloatArray(u.size) { i -> u[(n - 1 - i / 2) * 2 + i % 2] } }
+        }
+    }
 
     /** Deletes faces and removes vertices that are no longer used. */
     fun deleteFaces(p: SPart, faces: Set<Int>) {
         p.fixColors()
         val keep = p.faces.indices.filter { it !in faces }
-        val nf = keep.map { p.faces[it] }; val nc = keep.map { p.faceColors[it] }
-        p.faces.clear(); p.faces.addAll(nf); p.faceColors.clear(); p.faceColors.addAll(nc)
+        p.retainFaces(keep)
         compact(p)
     }
 
@@ -210,14 +218,14 @@ object ModelOps {
         }
         if (merged == 0) return 0
         p.fixColors()
-        val nf = ArrayList<IntArray>(); val nc = ArrayList<Int>()
+        val keep = ArrayList<Int>()
         p.faces.forEachIndexed { fi, f ->
             val g = ArrayList<Int>()
             for (v in f) { val m = map[v]; if (g.isEmpty() || g.last() != m) g.add(m) }
             if (g.size > 1 && g.first() == g.last()) g.removeAt(g.size - 1)
-            if (g.toSet().size >= 3) { nf.add(g.toIntArray()); nc.add(p.faceColors[fi]) }
+            if (g.toSet().size >= 3) { if (g.size != f.size) p.uvs[fi] = null; p.faces[fi] = g.toIntArray(); keep.add(fi) }
         }
-        p.faces.clear(); p.faces.addAll(nf); p.faceColors.clear(); p.faceColors.addAll(nc)
+        p.retainFaces(keep)
         compact(p)
         return merged
     }

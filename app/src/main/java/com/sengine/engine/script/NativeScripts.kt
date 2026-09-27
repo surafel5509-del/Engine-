@@ -52,6 +52,11 @@ object NativeScripts {
     @JvmStatic external fun nCallFunction(handle: Long, fn: String, args: Array<Any?>): Any?
     @JvmStatic external fun nTerrainHeights(ints: IntArray, floats: FloatArray): FloatArray
     @JvmStatic external fun nTerrainMesh(ints: IntArray, floats: FloatArray, heights: FloatArray): FloatArray
+    // Model & Animation Studio kernel (engine/ModelKit.cpp)
+    @JvmStatic external fun nMeshOp(op: Int, verts: FloatArray, faces: IntArray, attrs: IntArray, uvs: FloatArray, iargs: IntArray, fargs: FloatArray): Array<Any?>
+    @JvmStatic external fun nRigSegment(verts: FloatArray, faces: IntArray, joints: FloatArray, parents: IntArray): IntArray
+    @JvmStatic external fun nAutoAnimate(kind: String, names: Array<String>, parents: IntArray, rest: FloatArray, height: Float, length: Float): String
+    @JvmStatic external fun nAutoAnimationKinds(): String
 }
 
 /**

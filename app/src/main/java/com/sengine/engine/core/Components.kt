@@ -327,6 +327,12 @@ class MeshRenderer : Component() {
     var castShadows = true
     var animation = ""
     var animSpeed = 1f
+    // v6 physically based shading (off = classic Blinn-Phong look)
+    var pbr = false
+    var metallic = 0f
+    var roughness = 0.5f
+    var normalMap = ""
+    var normalStrength = 1f
     // runtime
     var animTime = 0f
     var playingAnim = ""
@@ -346,6 +352,11 @@ class MeshRenderer : Component() {
         Prop.F("Shininess", { shininess }, { shininess = it.coerceIn(1f, 256f) }, 1f),
         Prop.F("Emission", { emission }, { emission = it.coerceIn(0f, 4f) }, 0.05f),
         Prop.B("Unlit", { unlit }, { unlit = it }),
+        Prop.B("PBR", { pbr }, { pbr = it }),
+        Prop.F("Metallic", { metallic }, { metallic = it.coerceIn(0f, 1f) }, 0.02f),
+        Prop.F("Roughness", { roughness }, { roughness = it.coerceIn(0.03f, 1f) }, 0.02f),
+        Prop.Asset("Normal Map", AssetKind.TEXTURE, { normalMap }, { normalMap = it }),
+        Prop.F("Normal Strength", { normalStrength }, { normalStrength = it.coerceIn(0f, 4f) }, 0.05f),
         Prop.Asset("Shader", AssetKind.SHADER, { shader }, { shader = it }),
         Prop.F("Shader Param", { shaderParam }, { shaderParam = it }),
     )

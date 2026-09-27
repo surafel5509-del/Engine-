@@ -1,13 +1,16 @@
 package com.sengine.engine.model
 
+import kotlin.math.abs
 import kotlin.random.Random
 
 /** Ready-made editable models (with animations) for the Model Editor and the asset library. */
 object ModelPresets {
-    val NAMES = listOf("Low-poly Car", "Character (walk/idle)", "Tree", "House", "Sword", "Rock", "Spaceship", "Robot Turret")
+    val NAMES = listOf("Low-poly Car", "Character (walk/idle)", "Tree", "House", "Sword", "Rock", "Spaceship", "Robot Turret",
+        "Rigged Humanoid (auto animations)", "Table", "Chair", "Studio Lamp", "Wooden Crate", "Barrel", "Bottle")
 
     fun build(i: Int): SModel = when (i) {
-        0 -> car(); 1 -> character(); 2 -> tree(); 3 -> house(); 4 -> sword(); 5 -> rock(); 6 -> ship(); else -> turret()
+        0 -> car(); 1 -> character(); 2 -> tree(); 3 -> house(); 4 -> sword(); 5 -> rock(); 6 -> ship(); 7 -> turret()
+        8 -> humanoid(); 9 -> table(); 10 -> chair(); 11 -> lamp(); 12 -> crate(); 13 -> barrel(); else -> bottle()
     }
 
     private fun part(kind: Int, name: String, color: Int, x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, parent: Int = -1, segs: Int = 16): SPart =
@@ -164,6 +167,110 @@ object ModelPresets {
         val scan = SClip("Scan", 4f, true)
         m.parts[1].let { p -> scan.track(p.name).keys += listOf(key(0f, p.pos[0], p.pos[1], p.pos[2], ry = -60f), key(2f, p.pos[0], p.pos[1], p.pos[2], ry = 60f)) }
         m.clips += scan
+        return m
+    }
+
+    // ---------------------------------------------------------------- v6 studio presets
+    /** Box spanning local points a..b (joint space) with the given thickness. */
+    private fun boneBox(name: String, color: Int, a: FloatArray, b: FloatArray, tx: Float, tz: Float = tx): SPart {
+        val p = SModel.primitive(0).also { it.name = name; it.color = color }
+        val c = FloatArray(3) { (a[it] + b[it]) / 2 }
+        val sx = abs(b[0] - a[0]) + tx; val sy = abs(b[1] - a[1]) + tx * 0.5f; val sz = abs(b[2] - a[2]) + tz
+        for (v in p.verts) { v[0] = v[0] * sx + c[0]; v[1] = v[1] * sy + c[1]; v[2] = v[2] * sz + c[2] }
+        return p
+    }
+
+    /** A mannequin already rigged with the standard humanoid skeleton (part names = joint names). */
+    fun humanoid(): SModel {
+        val joints = Rigging.place(floatArrayOf(-0.4f, 0f, -0.15f), floatArrayOf(0.4f, 1.8f, 0.15f))
+        val skin = 0xFFE0B090.toInt(); val shirt = 0xFF3A6EA5.toInt(); val pants = 0xFF2F3640.toInt(); val shoe = 0xFF1B1B1B.toInt()
+        val m = SModel()
+        val zero = floatArrayOf(0f, 0f, 0f)
+        for ((i, j) in joints.withIndex()) {
+            val child = joints.indexOfFirst { it.parent == i }
+            val end = if (child >= 0) FloatArray(3) { joints[child].pos[it] - j.pos[it] } else when {
+                j.name == "Head" -> floatArrayOf(0f, 0.2f, 0f)
+                j.name.startsWith("Foot") -> floatArrayOf(0f, -0.04f, 0.16f)
+                else -> floatArrayOf(0f, -0.06f, 0f)
+            }
+            val n = j.name
+            val p = when {
+                n == "Hips" -> boneBox(n, pants, floatArrayOf(-0.13f, -0.06f, 0f), floatArrayOf(0.13f, 0.1f, 0f), 0.1f, 0.22f)
+                n == "Spine" -> boneBox(n, shirt, zero, end, 0.3f, 0.2f)
+                n == "Chest" -> boneBox(n, shirt, floatArrayOf(-0.08f, 0f, 0f), floatArrayOf(0.08f, end[1], 0f), 0.28f, 0.24f)
+                n == "Neck" -> boneBox(n, skin, zero, end, 0.09f)
+                n == "Head" -> boneBox(n, skin, floatArrayOf(0f, 0.02f, 0f), end, 0.2f, 0.22f)
+                n.startsWith("Shoulder") -> boneBox(n, shirt, zero, end, 0.11f)
+                n.startsWith("UpperArm") -> boneBox(n, shirt, zero, end, 0.1f)
+                n.startsWith("Forearm") || n.startsWith("Fingers") -> boneBox(n, skin, zero, end, if (n.startsWith("Fingers")) 0.07f else 0.085f)
+                n.startsWith("Hand") -> boneBox(n, skin, zero, end, 0.09f, 0.05f)
+                n.startsWith("Thigh") -> boneBox(n, pants, zero, end, 0.14f)
+                n.startsWith("Shin") -> boneBox(n, pants, zero, end, 0.11f)
+                else -> boneBox(n, shoe, floatArrayOf(0f, -0.02f, -0.03f), end, 0.1f)
+            }
+            p.parent = j.parent
+            val base = joints.getOrNull(j.parent)?.pos ?: zero
+            for (k in 0 until 3) p.pos[k] = j.pos[k] - base[k]
+            m.parts += p
+        }
+        m.rig.addAll(joints)
+        for (k in listOf("Idle", "Walk", "Run", "Jump", "Wave")) try { if (ModelStudio.available) ModelStudio.autoAnimate(m, k) } catch (_: Throwable) {}
+        if (m.clips.isEmpty()) m.clips += SClip("Idle", 2f, true).also { c -> c.track("Chest").keys += listOf(key(0f, 0f, 0.12f, 0f), key(1f, 0f, 0.13f, 0f, rx = 2f)) }
+        return m
+    }
+
+    fun table(): SModel {
+        val m = SModel(); val wood = 0xFF8D6E63.toInt()
+        m.parts += part(0, "Top", wood, 0f, 0.76f, 0f, 1.6f, 0.06f, 0.9f)
+        for ((i, x) in listOf(-0.72f, 0.72f).withIndex()) for ((k, z) in listOf(-0.38f, 0.38f).withIndex())
+            m.parts += part(0, "Leg${i * 2 + k + 1}", 0xFF6D4C41.toInt(), x, 0.365f, z, 0.07f, 0.73f, 0.07f)
+        return m
+    }
+
+    fun chair(): SModel {
+        val m = SModel(); val wood = 0xFFA1887F.toInt()
+        m.parts += part(0, "Seat", wood, 0f, 0.45f, 0f, 0.46f, 0.05f, 0.46f)
+        m.parts += part(0, "Back", wood, 0f, 0.72f, -0.21f, 0.46f, 0.5f, 0.04f)
+        for ((i, x) in listOf(-0.2f, 0.2f).withIndex()) for ((k, z) in listOf(-0.2f, 0.2f).withIndex())
+            m.parts += part(0, "Leg${i * 2 + k + 1}", 0xFF6D4C41.toInt(), x, 0.215f, z, 0.045f, 0.43f, 0.045f)
+        return m
+    }
+
+    fun lamp(): SModel {
+        val m = SModel()
+        m.parts += part(2, "Base", 0xFF212121.toInt(), 0f, 0.02f, 0f, 0.4f, 0.04f, 0.4f, segs = 16)
+        m.parts += part(2, "Pole", 0xFF9E9E9E.toInt(), 0f, 0.8f, 0f, 0.04f, 1.56f, 0.04f, segs = 8)
+        m.parts += part(3, "Shade", 0xFFF5F5F5.toInt(), 0f, 1.62f, 0f, 0.5f, 0.35f, 0.5f, segs = 16)
+        m.parts += part(4, "Bulb", 0xFFFFF59D.toInt(), 0f, 1.52f, 0f, 0.12f, 0.12f, 0.12f, segs = 10)
+        return m
+    }
+
+    fun crate(): SModel {
+        val m = SModel()
+        val box = part(0, "Crate", 0xFFB08850.toInt(), 0f, 0.5f, 0f, 1f, 1f, 1f)
+        box.fixColors()
+        val inner = ModelOps.inset(box, box.faces.indices.toSet(), 0.12f)
+        box.fixColors(); for (f in inner) if (f in box.faceColors.indices) box.faceColors[f] = 0xFF9A7442.toInt()
+        box.fixColors(); m.parts += box
+        return m
+    }
+
+    fun barrel(): SModel {
+        val m = SModel()
+        val b = part(2, "Barrel", 0xFF8B5A2B.toInt(), 0f, 0.5f, 0f, 0.7f, 1f, 0.7f, segs = 16)
+        for (v in b.verts) { val k = 1f + 0.12f * (1f - (v[1] * 2f) * (v[1] * 2f)); v[0] *= k; v[2] *= k }
+        m.parts += bake(b)
+        for ((i, y) in listOf(0.15f, 0.85f).withIndex()) m.parts += part(5, "Hoop${i + 1}", 0xFF424242.toInt(), 0f, y, 0f, 0.76f, 0.5f, 0.76f, segs = 16)
+        return m
+    }
+
+    fun bottle(): SModel {
+        val m = SModel()
+        val b = part(2, "Bottle", 0xFF2E7D32.toInt(), 0f, 0.15f, 0f, 0.14f, 0.3f, 0.14f, segs = 14)
+        for (v in b.verts) if (v[1] > 0.49f) { v[0] *= 0.35f; v[2] *= 0.35f }
+        m.parts += bake(b)
+        m.parts += part(2, "Neck", 0xFF2E7D32.toInt(), 0f, 0.36f, 0f, 0.05f, 0.12f, 0.05f, segs = 10)
+        m.parts += part(2, "Cap", 0xFFC62828.toInt(), 0f, 0.43f, 0f, 0.055f, 0.03f, 0.055f, segs = 10)
         return m
     }
 }

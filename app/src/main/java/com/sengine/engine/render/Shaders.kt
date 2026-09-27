@@ -51,6 +51,10 @@ class MeshProgram(val id: Int) {
     val uShadow = GLES20.glGetUniformLocation(id, "uShadow")
     val uGrade = GLES20.glGetUniformLocation(id, "uGrade")
     val uSkyColor = GLES20.glGetUniformLocation(id, "uSkyColor")
+    val uSkyHorizon = GLES20.glGetUniformLocation(id, "uSkyHorizon")
+    val uPbr = GLES20.glGetUniformLocation(id, "uPbr")
+    val uNormalMap = GLES20.glGetUniformLocation(id, "uNormalMap")
+    val uUseNormal = GLES20.glGetUniformLocation(id, "uUseNormal")
 }
 
 /** Full-screen post-processing program. */
@@ -207,6 +211,10 @@ void main() {
 """
 
         fun meshFs(effect: String) = """
+#ifdef GL_OES_standard_derivatives
+#extension GL_OES_standard_derivatives : enable
+#define HAS_DERIV 1
+#endif
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
@@ -239,6 +247,53 @@ uniform vec2 uResolution;
 uniform sampler2D uShadowMap;
 uniform vec4 uShadow;
 uniform float uGrade;
+uniform vec3 uSkyHorizon;
+uniform vec4 uPbr;          // x: PBR on, y: metallic, z: roughness, w: normal strength
+uniform sampler2D uNormalMap;
+uniform float uUseNormal;
+// ---- PBR (GGX / Smith / Schlick) + analytic sky probe for ambient & reflections
+vec3 skyProbe(vec3 r, float rough) {
+  float t = clamp(r.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 ground = uSkyHorizon * 0.3 + vec3(0.05);
+  vec3 c = t > 0.5 ? mix(uSkyHorizon, uSkyColor, (t - 0.5) * 2.0) : mix(ground, uSkyHorizon, t * 2.0);
+  vec3 avg = (uSkyColor + uSkyHorizon * 2.0 + ground) * 0.25;
+  return mix(c, avg, rough * rough);
+}
+vec3 envBRDF(vec3 f0, float rough, float nv) {
+  vec4 r = rough * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+  float a004 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
+  vec2 ab = vec2(-1.04, 1.04) * a004 + r.zw;
+  return f0 * ab.x + ab.y;
+}
+vec3 pbrLight(vec3 n, vec3 v, vec3 l, vec3 albedo, vec3 f0, float rough, float metal) {
+  float nl = max(dot(n, l), 0.0);
+  if (nl <= 0.0) return vec3(0.0);
+  vec3 h = normalize(l + v);
+  float nv = max(dot(n, v), 0.001);
+  float nh = max(dot(n, h), 0.0);
+  float a = max(rough * rough, 0.002);
+  float a2 = a * a;
+  float d = nh * nh * (a2 - 1.0) + 1.0;
+  float D = a2 / (3.14159 * d * d + 0.00001);
+  float k = (rough + 1.0) * (rough + 1.0) * 0.125;
+  float V = 0.25 / ((nl * (1.0 - k) + k) * (nv * (1.0 - k) + k) + 0.00001);
+  vec3 F = f0 + (1.0 - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
+  vec3 kd = (1.0 - F) * (1.0 - metal);
+  return (kd * albedo + min(D * V, 64.0) * F * 3.14159) * nl;
+}
+#ifdef HAS_DERIV
+vec3 perturbNormal(vec3 n, vec3 p, vec2 uv) {
+  vec3 dp1 = dFdx(p); vec3 dp2 = dFdy(p);
+  vec2 duv1 = dFdx(uv); vec2 duv2 = dFdy(uv);
+  vec3 dp2perp = cross(dp2, n); vec3 dp1perp = cross(n, dp1);
+  vec3 t = dp2perp * duv1.x + dp1perp * duv2.x;
+  vec3 b = dp2perp * duv1.y + dp1perp * duv2.y;
+  float im = inversesqrt(max(max(dot(t, t), dot(b, b)), 1e-12));
+  vec3 m = texture2D(uNormalMap, uv).xyz * 2.0 - 1.0;
+  m.xy *= uPbr.w;
+  return normalize(mat3(t * im, b * im, n) * m);
+}
+#endif
 float unpackDepth(vec4 c) { return dot(c, vec4(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0)); }
 float shadowFactor(vec3 n, vec3 l) {
   if (uShadow.x < 0.5) return 1.0;
@@ -266,7 +321,36 @@ void main() {
   if (uUseTex > 0.5) base *= texture2D(uTex, uv);
   if (base.a < 0.02) discard;
   vec3 col = base.rgb;
-  if (uUnlit < 0.5) {
+  if (uUnlit < 0.5 && uPbr.x > 0.5) {
+    vec3 n = normalize(vNormal);
+    if (!gl_FrontFacing) n = -n;
+#ifdef HAS_DERIV
+    if (uUseNormal > 0.5) n = perturbNormal(n, vWorld, uv);
+#endif
+    vec3 v = normalize(uCamPos - vWorld);
+    vec3 l = normalize(-uDirDir);
+    float metal = clamp(uPbr.y, 0.0, 1.0);
+    float rough = clamp(uPbr.z, 0.03, 1.0);
+    vec3 albedo = base.rgb;
+    vec3 f0 = mix(vec3(0.04), albedo, metal);
+    float nl = max(dot(n, l), 0.0);
+    float sh = nl > 0.0 ? shadowFactor(n, l) : 1.0;
+    vec3 lo = uDirColor * pbrLight(n, v, l, albedo, f0, rough, metal) * sh;
+    for (int i = 0; i < 4; i++) {
+      vec3 d = uPointPos[i].xyz - vWorld;
+      float dist = length(d);
+      float att = clamp(1.0 - dist / max(uPointPos[i].w, 0.001), 0.0, 1.0);
+      att *= att;
+      if (att > 0.0) lo += uPointColor[i] * pbrLight(n, v, d / max(dist, 0.0001), albedo, f0, rough, metal) * att;
+    }
+    float nv = max(dot(n, v), 0.001);
+    float hemi = n.y * 0.5 + 0.5;
+    vec3 irr = uAmbient * mix(vec3(0.55, 0.5, 0.45), mix(vec3(1.0), uSkyColor * 1.6, 0.35), hemi);
+    vec3 spec = envBRDF(f0, rough, nv);
+    float ao = mix(0.6, 1.0, sh * 0.5 + 0.5);
+    vec3 refl = skyProbe(reflect(-v, n), rough) * (0.6 + 0.4 * length(uAmbient));
+    col = lo + (irr * albedo * (1.0 - metal) + refl * spec) * ao;
+  } else if (uUnlit < 0.5) {
     vec3 n = normalize(vNormal);
     if (!gl_FrontFacing) n = -n;
     vec3 v = normalize(uCamPos - vWorld);

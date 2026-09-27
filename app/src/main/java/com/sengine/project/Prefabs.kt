@@ -20,7 +20,8 @@ object Prefabs {
     val PREFABS_2D = listOf("Water Pool", "Floating Crate", "Campfire", "Torch", "Rain", "Snow", "Dust Cloud", "Smoke Stack",
         "Waterfall Splash", "Magic Portal", "Explosion FX", "Falling Leaves")
     val PREFABS_3D = listOf("Lake 3D", "Floating Barrel 3D", "Campfire 3D", "Burning Barrel 3D", "Street Lamp 3D", "Fountain 3D",
-        "Low-poly Tree 3D", "Hut 3D", "Rock 3D", "Rain 3D", "Snow 3D", "Crate Stack 3D")
+        "Low-poly Tree 3D", "Hut 3D", "Rock 3D", "Rain 3D", "Snow 3D", "Crate Stack 3D",
+        "Studio 3-Point Lighting", "Studio Backdrop")
 
     private fun particles(g: GameObject, preset: String, tweak: ParticleEmitter.() -> Unit = {}): ParticleEmitter =
         g.add(ParticleEmitter().also { it.applyPreset(ParticleEmitter.PRESETS.indexOf(preset)); it.tweak() })
@@ -117,6 +118,27 @@ object Prefabs {
             "Crate Stack 3D" -> {
                 for ((i, c) in listOf(Triple(0f, 0.5f, 0f), Triple(1.05f, 0.5f, 0f), Triple(0.5f, 1.5f, 0f)).withIndex())
                     child(s, root, "Crate$i", c.first, c.second, c.third).also { mesh(it, 0, 0xFFB5835A, 1f, 1f, 1f); it.add(Collider3D()); it.add(Rigidbody3D()) }
+            }
+            // ------------------------------------------------------------ v6 studio
+            "Studio 3-Point Lighting" -> {
+                // key (warm, strong), fill (cool, soft) and rim/back light around the origin + a soft top light
+                child(s, root, "Key Light", -3.5f, 4f, 3.5f).also { it.add(Light().also { l -> l.kind = 1; l.color = 0xFFFFE2B8.toInt(); l.intensity = 2.6f; l.range = 14f }) }
+                child(s, root, "Fill Light", 4f, 2.5f, 3f).also { it.add(Light().also { l -> l.kind = 1; l.color = 0xFFBFD4FF.toInt(); l.intensity = 1.1f; l.range = 12f }) }
+                child(s, root, "Rim Light", 0.5f, 4.5f, -4f).also { it.add(Light().also { l -> l.kind = 1; l.color = 0xFFFFFFFF.toInt(); l.intensity = 2f; l.range = 12f }) }
+                child(s, root, "Key Softbox", -3.5f, 4f, 3.5f).also { mesh(it, 0, 0xFFFFF6E8, 1.2f, 1.2f, 0.08f); it.rotY = -45f; it.rotX = 25f; it.get<MeshRenderer>()!!.unlit = true }
+                child(s, root, "Fill Softbox", 4f, 2.5f, 3f).also { mesh(it, 0, 0xFFEAF1FF, 1f, 1f, 0.08f); it.rotY = 53f; it.rotX = 10f; it.get<MeshRenderer>()!!.unlit = true }
+            }
+            "Studio Backdrop" -> {
+                // seamless cyclorama: floor, a curved cove and the back wall (no visible corner)
+                val grey = 0xFFD9D9D9
+                child(s, root, "Floor", 0f, -0.04f, 0f).also { mesh(it, 0, grey, 12f, 0.08f, 8f); it.add(Collider3D()) }
+                val r = 2f; val n = 6; val seg = (r * Math.PI / 2 / n).toFloat() + 0.03f
+                for (i in 0 until n) {
+                    val a = Math.toRadians((i + 0.5) * 90.0 / n)
+                    child(s, root, "Cove$i", 0f, (r * (1 - Math.cos(a))).toFloat() - 0.04f, (-4 - r * Math.sin(a)).toFloat())
+                        .also { mesh(it, 0, grey, 12f, 0.08f, seg); it.rotX = Math.toDegrees(a).toFloat() }
+                }
+                child(s, root, "Back Wall", 0f, r + 3f, -4f - r - 0.04f).also { mesh(it, 0, grey, 12f, 6f, 0.08f); it.add(Collider3D()) }
             }
         }
         return root

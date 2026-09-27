@@ -339,6 +339,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         r3.grade = quality >= 3
         r3.sunDisc = settings?.sunDisc ?: true
         r3.setSkyColor(settings?.skyTop ?: 0xFF3B7BD4.toInt())
+        r3.setSkyHorizon(settings?.skyHorizon ?: 0xFFBFD8F0.toInt())
         r3.setupLights(scene, v)
 
         // gather opaque / transparent draw items
@@ -376,7 +377,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             val it = items[i]
             val mesh = it.mesh ?: continue
             if (!r3.visible(mesh, it.model)) { culled++; continue }
-            r3.drawMesh(mesh, it.model, it.mr!!, it.tex, it.prog, it.color)
+            r3.drawMesh(mesh, it.model, it.mr!!, it.tex, it.prog, it.color, it.ntex)
         }
         engine.culledObjects = culled
         // transparent meshes, sprites, text & particles: back to front, no depth writes
@@ -392,7 +393,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             if (mr != null) {
                 val start = itemCount
                 collectMesh(go, mr)
-                for (i in start until itemCount) { val it = items[i]; r3.drawMesh(it.mesh!!, it.model, mr, it.tex, it.prog, it.color) }
+                for (i in start until itemCount) { val it = items[i]; r3.drawMesh(it.mesh!!, it.model, mr, it.tex, it.prog, it.color, it.ntex) }
             } else drawObject2D(go, 100f, go.world3)
         }
         GLES20.glDepthMask(true)
@@ -401,15 +402,15 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
     }
 
-    private class DrawItem { var mesh: Mesh? = null; val model = FloatArray(16); var mr: MeshRenderer? = null; var tex: Tex? = null; var prog: MeshProgram? = null; var color = 0 }
+    private class DrawItem { var mesh: Mesh? = null; val model = FloatArray(16); var mr: MeshRenderer? = null; var tex: Tex? = null; var prog: MeshProgram? = null; var color = 0; var ntex: Tex? = null }
     private val items = ArrayList<DrawItem>()
     private var itemCount = 0
     private var culled = 0
 
-    private fun addItem(mesh: Mesh, model: FloatArray, mr: MeshRenderer, tex: Tex?, prog: MeshProgram?, color: Int = 0) {
+    private fun addItem(mesh: Mesh, model: FloatArray, mr: MeshRenderer, tex: Tex?, prog: MeshProgram?, color: Int = 0, ntex: Tex? = null) {
         if (itemCount == items.size) items.add(DrawItem())
         val it = items[itemCount++]
-        it.mesh = mesh; System.arraycopy(model, 0, it.model, 0, 16); it.mr = mr; it.tex = tex; it.prog = prog; it.color = color
+        it.mesh = mesh; System.arraycopy(model, 0, it.model, 0, 16); it.mr = mr; it.tex = tex; it.prog = prog; it.color = color; it.ntex = ntex
     }
 
     private fun isSModel(mr: MeshRenderer) = mr.mesh == MeshRenderer.MESHES.size - 1 && mr.model.endsWith(".smodel", true)
@@ -418,6 +419,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     private fun collectMesh(go: GameObject, mr: MeshRenderer) {
         val tex = if (mr.texture.isNotBlank()) textures.image(mr.texture) else null
         val prog = if (mr.shader.isNotBlank()) shaders.mesh(mr.shader) else null
+        val ntex = if (mr.pbr && mr.normalMap.isNotBlank()) textures.image(mr.normalMap) else null
         if (isSModel(mr)) {
             val asset = Meshes.smodel(engine.project.assetFile(mr.model)) ?: return
             val clip = asset.model.clip(mr.playingAnim.ifBlank { mr.animation })
@@ -425,11 +427,13 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             for ((i, groups) in asset.parts.withIndex()) {
                 if (!asset.model.parts[i].visible) continue
                 Mat4.mul(m4, go.world3, asset.mats[i])
-                for ((color, mesh) in groups) addItem(mesh, m4, mr, tex, prog, color)
+                val pt = asset.model.parts[i].texture
+                val ptex = if (pt.isNotBlank()) textures.image(pt) ?: tex else tex
+                for ((color, mesh) in groups) addItem(mesh, m4, mr, ptex, prog, color, ntex)
             }
             return
         }
-        addItem(meshOf(mr), go.world3, mr, tex, prog)
+        addItem(meshOf(mr), go.world3, mr, tex, prog, 0, ntex)
     }
 
     private fun meshOf(mr: MeshRenderer): Mesh = if (mr.mesh == MeshRenderer.MESHES.size - 1) {

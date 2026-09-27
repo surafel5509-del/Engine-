@@ -2,11 +2,13 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "../engine/ModelKit.h"
 #include "../engine/Terrain.h"
 #include "../script/SScript.h"
 
@@ -448,3 +450,167 @@ JFN(jfloatArray, nTerrainMesh)(JNIEnv* env, jclass, jintArray ip, jfloatArray fp
     env->SetFloatArrayRegion(out, 0, (jsize) verts.size(), verts.data());
     return out;
 }
+
+// ================================================================================================ Model Studio kernel
+namespace {
+
+PolyMesh readMesh(JNIEnv* env, jfloatArray verts, jintArray faces, jintArray attrs, jfloatArray uvs) {
+    PolyMesh m;
+    jsize nv = env->GetArrayLength(verts);
+    m.v.resize((size_t) nv);
+    if (nv) env->GetFloatArrayRegion(verts, 0, nv, m.v.data());
+    jsize nf = env->GetArrayLength(faces);
+    std::vector<jint> fi((size_t) nf);
+    if (nf) env->GetIntArrayRegion(faces, 0, nf, fi.data());
+    const int vc = m.vertexCount();
+    for (size_t i = 0; i < fi.size();) {
+        int c = fi[i++];
+        if (c < 0 || i + (size_t) c > fi.size()) throw std::runtime_error("corrupt face data");
+        std::vector<int> f((size_t) c);
+        for (int k = 0; k < c; k++) {
+            f[(size_t) k] = fi[i++];
+            if (f[(size_t) k] < 0 || f[(size_t) k] >= vc) throw std::runtime_error("face references a missing vertex");
+        }
+        m.f.push_back(f);
+    }
+    m.normalize();
+    if (attrs) {
+        jsize na = env->GetArrayLength(attrs);
+        std::vector<jint> a((size_t) na);
+        if (na) env->GetIntArrayRegion(attrs, 0, na, a.data());
+        for (size_t i = 0; i < m.f.size() && i * 2 + 1 < a.size(); i++) { m.color[i] = a[i * 2]; m.group[i] = a[i * 2 + 1]; }
+    }
+    if (uvs) {
+        jsize nu = env->GetArrayLength(uvs);
+        std::vector<float> u((size_t) nu);
+        if (nu) env->GetFloatArrayRegion(uvs, 0, nu, u.data());
+        size_t o = 0;
+        for (size_t i = 0; i < m.f.size(); i++) {
+            size_t need = m.f[i].size() * 2;
+            if (o + need > u.size()) break;
+            if (!std::isnan(u[o])) m.uv[i].assign(u.begin() + (long) o, u.begin() + (long) (o + need));
+            o += need;
+        }
+    }
+    return m;
+}
+
+jobjectArray writeMesh(JNIEnv* env, PolyMesh& m, const std::vector<int>& result) {
+    m.normalize();
+    jclass objCls = env->FindClass("java/lang/Object");
+    jobjectArray out = env->NewObjectArray(5, objCls, nullptr);
+    jfloatArray v = env->NewFloatArray((jsize) m.v.size());
+    if (!m.v.empty()) env->SetFloatArrayRegion(v, 0, (jsize) m.v.size(), m.v.data());
+    std::vector<jint> f, a;
+    std::vector<float> uv;
+    for (size_t i = 0; i < m.f.size(); i++) {
+        f.push_back((jint) m.f[i].size());
+        for (int x : m.f[i]) f.push_back(x);
+        a.push_back(m.color[i]); a.push_back(m.group[i]);
+        if (m.uv[i].size() == m.f[i].size() * 2) uv.insert(uv.end(), m.uv[i].begin(), m.uv[i].end());
+        else for (size_t k = 0; k < m.f[i].size() * 2; k++) uv.push_back(NAN);
+    }
+    jintArray fj = env->NewIntArray((jsize) f.size());
+    if (!f.empty()) env->SetIntArrayRegion(fj, 0, (jsize) f.size(), f.data());
+    jintArray aj = env->NewIntArray((jsize) a.size());
+    if (!a.empty()) env->SetIntArrayRegion(aj, 0, (jsize) a.size(), a.data());
+    jfloatArray uj = env->NewFloatArray((jsize) uv.size());
+    if (!uv.empty()) env->SetFloatArrayRegion(uj, 0, (jsize) uv.size(), uv.data());
+    std::vector<jint> r(result.begin(), result.end());
+    jintArray rj = env->NewIntArray((jsize) r.size());
+    if (!r.empty()) env->SetIntArrayRegion(rj, 0, (jsize) r.size(), r.data());
+    env->SetObjectArrayElement(out, 0, v);
+    env->SetObjectArrayElement(out, 1, fj);
+    env->SetObjectArrayElement(out, 2, aj);
+    env->SetObjectArrayElement(out, 3, uj);
+    env->SetObjectArrayElement(out, 4, rj);
+    return out;
+}
+
+std::vector<int> ints(JNIEnv* env, jintArray a) {
+    std::vector<int> o;
+    if (!a) return o;
+    jsize n = env->GetArrayLength(a);
+    std::vector<jint> t((size_t) n);
+    if (n) env->GetIntArrayRegion(a, 0, n, t.data());
+    o.assign(t.begin(), t.end());
+    return o;
+}
+std::vector<float> floats(JNIEnv* env, jfloatArray a) {
+    std::vector<float> o;
+    if (!a) return o;
+    jsize n = env->GetArrayLength(a);
+    o.resize((size_t) n);
+    if (n) env->GetFloatArrayRegion(a, 0, n, o.data());
+    return o;
+}
+
+}  // namespace
+
+/** op: 1 bevel, 2 insert edge loop, 3 bridge, 4 auto PolyGroups, 5 select PolyGroups, 6 unwrap UVs. */
+JFN(jobjectArray, nMeshOp)(JNIEnv* env, jclass, jint op, jfloatArray verts, jintArray faces, jintArray attrs, jfloatArray uvs,
+                           jintArray iargs, jfloatArray fargs) {
+    try {
+        PolyMesh m = readMesh(env, verts, faces, attrs, uvs);
+        std::vector<int> ia = ints(env, iargs);
+        std::vector<float> fa = floats(env, fargs);
+        auto I = [&](size_t k, int d) { return k < ia.size() ? ia[k] : d; };
+        auto F = [&](size_t k, float d) { return k < fa.size() ? fa[k] : d; };
+        std::vector<int> result;
+        switch (op) {
+            case 1: {
+                std::vector<int> sel(ia.begin() + std::min<size_t>(1, ia.size()), ia.end());
+                result = modelkit::bevelFaces(m, sel, F(0, 0.2f), F(1, 0.1f), I(0, 3));
+                break;
+            }
+            case 2: result.push_back(modelkit::insertEdgeLoop(m, I(0, -1), I(1, -1), F(0, 0.5f))); break;
+            case 3: result = modelkit::bridgeFaces(m, I(0, -1), I(1, -1), I(2, 1)); break;
+            case 4: result.push_back(modelkit::autoPolyGroups(m, F(0, 30))); break;
+            case 5: result = modelkit::selectGroups(m, ia); break;
+            case 6: modelkit::unwrap(m, I(0, 0), F(0, 1)); break;
+            default: throw std::runtime_error("unknown mesh operation " + std::to_string(op));
+        }
+        return writeMesh(env, m, result);
+    } catch (std::exception& e) {
+        throwJava(env, e.what());
+        return nullptr;
+    }
+}
+
+JFN(jintArray, nRigSegment)(JNIEnv* env, jclass, jfloatArray verts, jintArray faces, jfloatArray joints, jintArray parents) {
+    try {
+        PolyMesh m = readMesh(env, verts, faces, nullptr, nullptr);
+        std::vector<int> r = modelkit::segmentRig(m, floats(env, joints), ints(env, parents));
+        std::vector<jint> o(r.begin(), r.end());
+        jintArray out = env->NewIntArray((jsize) o.size());
+        if (!o.empty()) env->SetIntArrayRegion(out, 0, (jsize) o.size(), o.data());
+        return out;
+    } catch (std::exception& e) {
+        throwJava(env, e.what());
+        return nullptr;
+    }
+}
+
+JFN(jstring, nAutoAnimate)(JNIEnv* env, jclass, jstring kind, jobjectArray names, jintArray parents, jfloatArray rest, jfloat height, jfloat length) {
+    try {
+        const char* k = env->GetStringUTFChars(kind, nullptr);
+        std::string ks(k ? k : "");
+        if (k) env->ReleaseStringUTFChars(kind, k);
+        std::vector<std::string> ns;
+        jsize n = env->GetArrayLength(names);
+        for (jsize i = 0; i < n; i++) {
+            auto s = (jstring) env->GetObjectArrayElement(names, i);
+            const char* c = s ? env->GetStringUTFChars(s, nullptr) : nullptr;
+            ns.emplace_back(c ? c : "");
+            if (c) env->ReleaseStringUTFChars(s, c);
+            if (s) env->DeleteLocalRef(s);
+        }
+        std::string js = modelkit::autoAnimate(ks, ns, ints(env, parents), floats(env, rest), height, length);
+        return env->NewStringUTF(js.c_str());
+    } catch (std::exception& e) {
+        throwJava(env, e.what());
+        return nullptr;
+    }
+}
+
+JFN(jstring, nAutoAnimationKinds)(JNIEnv* env, jclass) { return env->NewStringUTF(modelkit::autoAnimationKinds()); }

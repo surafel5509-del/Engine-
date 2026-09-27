@@ -123,6 +123,8 @@ class Renderer3D {
     private val skyColor = FloatArray(3)
 
     fun setSkyColor(c: Int) { skyColor[0] = GL.r(c); skyColor[1] = GL.g(c); skyColor[2] = GL.b(c) }
+    private val skyHorizon = floatArrayOf(0.75f, 0.85f, 0.94f)
+    fun setSkyHorizon(c: Int) { skyHorizon[0] = GL.r(c); skyHorizon[1] = GL.g(c); skyHorizon[2] = GL.b(c) }
 
     private fun ensureShadowTarget(size: Int) {
         if (depthProg == 0 || shadowGen != Meshes.contextGen) {
@@ -231,7 +233,7 @@ class Renderer3D {
 
     fun visible(mesh: Mesh, model: FloatArray) = inFrustum(view.viewProj, mesh, model)
 
-    fun drawMesh(mesh: Mesh, model: FloatArray, mr: MeshRenderer, tex: Tex?, program: MeshProgram?, colorOverride: Int = 0) {
+    fun drawMesh(mesh: Mesh, model: FloatArray, mr: MeshRenderer, tex: Tex?, program: MeshProgram?, colorOverride: Int = 0, normalTex: Tex? = null) {
         val p = program ?: shaders.defaultMesh
         GLES20.glUseProgram(p.id)
         Mat4.mul(mvp, view.viewProj, model)
@@ -246,6 +248,21 @@ class Renderer3D {
         GLES20.glUniform3f(p.uCamPos, view.eye[0], view.eye[1], view.eye[2])
         GLES20.glUniform3fv(p.uAmbient, 1, ambient, 0)
         if (p.uSkyColor >= 0) GLES20.glUniform3fv(p.uSkyColor, 1, skyColor, 0)
+        if (p.uSkyHorizon >= 0) GLES20.glUniform3fv(p.uSkyHorizon, 1, skyHorizon, 0)
+        if (p.uPbr >= 0) GLES20.glUniform4f(p.uPbr, if (mr.pbr) 1f else 0f, mr.metallic, mr.roughness, mr.normalStrength)
+        if (p.uUseNormal >= 0) {
+            if (normalTex != null && mr.pbr) {
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
+                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, normalTex.id)
+                if (mr.tiling != 1f && isPot(normalTex.w) && isPot(normalTex.h)) {
+                    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT)
+                    GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT)
+                }
+                GLES20.glUniform1i(p.uNormalMap, 2)
+                GLES20.glUniform1f(p.uUseNormal, 1f)
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
+            } else GLES20.glUniform1f(p.uUseNormal, 0f)
+        }
         GLES20.glUniform3fv(p.uDirDir, 1, dirDir, 0)
         GLES20.glUniform3fv(p.uDirColor, 1, dirColor, 0)
         GLES20.glUniform4fv(p.uPointPos, 4, pointPos, 0)

@@ -1,8 +1,18 @@
-# S Engine — v5 Native Edition
+# S Engine — v6 Studio Edition
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 
 > Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
+
+## 🎬 v6 Model & Animation Studio (round 1)
+
+The 3D Model Editor is now a small Blender-style studio. The heavy mesh work runs in native C++ (`app/src/main/cpp/engine/ModelKit.cpp`) through JNI.
+
+- **Edit mode tools:** Extrude, Inset, **Bevel** (chamfer, round or custom width/segments), **Loop cut**, **Bridge** (connects two faces with a tube), **PolyGroups** (auto by angle, select group, new group from selection, colour view) and **UV** (box, planar, cylindrical, spherical, smart per-group unwrapping, UV preview, per-part texture).
+- **Rig mode:** point-and-click humanoid rigging with a 21-joint skeleton. Tap the model to place the highlighted joint and the editor moves on to the next one. L/R mirroring and auto-placement from the model's proportions are included. **Bind** splits the mesh into one part per bone (rigid skinning).
+- **Animate mode:** timeline with keys, plus **Auto** animations (Idle, Walk, Run, Jump, Wave, Punch, Dance, Death, Celebrate, Crouch, Spin, Bounce, Hover, Shake, Swing, Pulse). Clips can be exported and imported as `.sanim` files, which retarget by bone name/role onto other models.
+- **Presets:** rigged Humanoid with auto animations, plus Table, Chair, Studio Lamp, Crate, Barrel and Bottle. New prefabs: **Studio 3-Point Lighting** and **Studio Backdrop** (cyclorama).
+- **Renderer (OpenGL ES 2.0):** optional **PBR** per MeshRenderer: metallic/roughness GGX, **normal maps** (derivative tangent frame) and an analytic sky probe for ambient light and reflections. The classic look stays the default.
 
 ## ⚙️ v5 Native Edition
 

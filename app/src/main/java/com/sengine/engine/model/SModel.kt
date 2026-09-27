@@ -25,11 +25,39 @@ class SPart(
     val faceColors: ArrayList<Int> = ArrayList(),
     var smooth: Boolean = false,
     var visible: Boolean = true,
+    /** Per-face PolyGroup id (same length as [faces]). */
+    val groups: ArrayList<Int> = ArrayList(),
+    /** Per-face UVs, 2 floats per corner, or null = automatic box projection. */
+    val uvs: ArrayList<FloatArray?> = ArrayList(),
+    /** Optional texture asset for this part (uses [uvs]). */
+    var texture: String = "",
 ) {
     fun copy(): SPart = SPart(name, parent, color, pos.copyOf(), rot.copyOf(), scale.copyOf(),
-        ArrayList(verts.map { it.copyOf() }), ArrayList(faces.map { it.copyOf() }), ArrayList(faceColors), smooth, visible)
+        ArrayList(verts.map { it.copyOf() }), ArrayList(faces.map { it.copyOf() }), ArrayList(faceColors), smooth, visible,
+        ArrayList(groups), ArrayList(uvs.map { it?.copyOf() }), texture)
 
-    fun fixColors() { while (faceColors.size < faces.size) faceColors.add(0); while (faceColors.size > faces.size) faceColors.removeAt(faceColors.size - 1) }
+    /** Keeps the per-face attribute lists (colours, PolyGroups, UVs) the same length as [faces]. */
+    fun fixColors() {
+        while (faceColors.size < faces.size) faceColors.add(0); while (faceColors.size > faces.size) faceColors.removeAt(faceColors.size - 1)
+        while (groups.size < faces.size) groups.add(0); while (groups.size > faces.size) groups.removeAt(groups.size - 1)
+        while (uvs.size < faces.size) uvs.add(null); while (uvs.size > faces.size) uvs.removeAt(uvs.size - 1)
+        for (i in faces.indices) if (uvs[i] != null && uvs[i]!!.size != faces[i].size * 2) uvs[i] = null
+    }
+
+    /** Keeps only the faces at [keep] (in order), with their attributes. */
+    fun retainFaces(keep: List<Int>) {
+        fixColors()
+        val nf = keep.map { faces[it] }; val nc = keep.map { faceColors[it] }; val ng = keep.map { groups[it] }; val nu = keep.map { uvs[it] }
+        faces.clear(); faces.addAll(nf); faceColors.clear(); faceColors.addAll(nc); groups.clear(); groups.addAll(ng); uvs.clear(); uvs.addAll(nu)
+    }
+
+    /** Appends a face copying colour / PolyGroup from face [like] (or defaults). */
+    fun addFace(f: IntArray, like: Int = -1) {
+        fixColors()
+        faces.add(f); faceColors.add(faceColors.getOrElse(like) { 0 }); groups.add(groups.getOrElse(like) { 0 }); uvs.add(null)
+    }
+
+    val hasUVs: Boolean get() = uvs.any { it != null }
 
     fun toJson(): JSONObject {
         fixColors()
@@ -39,6 +67,11 @@ class SPart(
         return JSONObject().put("name", name).put("parent", parent).put("color", color)
             .put("pos", arr(pos)).put("rot", arr(rot)).put("scale", arr(scale))
             .put("v", v).put("f", f).put("fc", fc).put("smooth", smooth).put("visible", visible)
+            .also { o ->
+                if (groups.any { it != 0 }) o.put("g", JSONArray().also { a -> groups.forEach { a.put(it) } })
+                if (hasUVs) o.put("uv", JSONArray().also { a -> uvs.forEach { u -> a.put(if (u == null) JSONObject.NULL else JSONArray().also { j -> u.forEach { x -> j.put(r(x)) } }) } })
+                if (texture.isNotBlank()) o.put("tex", texture)
+            }
     }
 
     companion object {
@@ -56,6 +89,11 @@ class SPart(
             for (k in 0 until f.length()) { val a = f.getJSONArray(k); p.faces.add(IntArray(a.length()) { a.getInt(it) }) }
             val fc = o.optJSONArray("fc")
             if (fc != null) for (k in 0 until fc.length()) p.faceColors.add(fc.optInt(k))
+            o.optJSONArray("g")?.let { g -> for (k in 0 until g.length()) p.groups.add(g.optInt(k)) }
+            o.optJSONArray("uv")?.let { u ->
+                for (k in 0 until u.length()) p.uvs.add(u.optJSONArray(k)?.let { j -> FloatArray(j.length()) { j.optDouble(it).toFloat() } })
+            }
+            p.texture = o.optString("tex", "")
             p.fixColors()
             p.smooth = o.optBoolean("smooth", false); p.visible = o.optBoolean("visible", true)
             return p
@@ -93,13 +131,20 @@ class SClip(var name: String = "Idle", var length: Float = 1f, var loop: Boolean
     }
 }
 
-class SModel(val parts: MutableList<SPart> = ArrayList(), val clips: MutableList<SClip> = ArrayList()) {
+/** A rig joint placed in model space (point-and-click rigging). */
+class SJoint(var name: String, var parent: Int, val pos: FloatArray) {
+    fun toJson(): JSONObject = JSONObject().put("name", name).put("parent", parent).put("pos", SPart.arr(pos))
+    companion object { fun fromJson(o: JSONObject) = SJoint(o.optString("name"), o.optInt("parent", -1), SPart.farr(o.optJSONArray("pos"), floatArrayOf(0f, 0f, 0f))) }
+}
+
+class SModel(val parts: MutableList<SPart> = ArrayList(), val clips: MutableList<SClip> = ArrayList(), val rig: MutableList<SJoint> = ArrayList()) {
 
     fun copy(): SModel = fromJson(toJson())
 
     fun toJson(): JSONObject = JSONObject().put("format", "smodel").put("version", 1)
         .put("parts", JSONArray().also { a -> parts.forEach { a.put(it.toJson()) } })
         .put("clips", JSONArray().also { a -> clips.forEach { a.put(it.toJson()) } })
+        .also { o -> if (rig.isNotEmpty()) o.put("rig", JSONArray().also { a -> rig.forEach { a.put(it.toJson()) } }) }
 
     fun clip(name: String): SClip? = clips.firstOrNull { it.name.equals(name, true) }
 
@@ -171,11 +216,14 @@ class SModel(val parts: MutableList<SPart> = ArrayList(), val clips: MutableList
             val out = groups.getOrPut(color) { ArrayList() }
             val n = faceNormal(p, f)
             val ax = dominant(n)
-            for (k in 1 until f.size - 1) for (vi in intArrayOf(f[0], f[k], f[k + 1])) {
+            val fuv = p.uvs.getOrNull(fi)
+            for (k in 1 until f.size - 1) for (corner in intArrayOf(0, k, k + 1)) {
+                val vi = f[corner]
                 val v = p.verts[vi]
                 val nn = smoothN?.get(vi) ?: n
                 out.add(v[0]); out.add(v[1]); out.add(v[2]); out.add(nn[0]); out.add(nn[1]); out.add(nn[2])
-                when (ax) { 0 -> { out.add(v[2]); out.add(-v[1]) }; 1 -> { out.add(v[0]); out.add(v[2]) }; else -> { out.add(v[0]); out.add(-v[1]) } }
+                if (fuv != null) { out.add(fuv[corner * 2]); out.add(fuv[corner * 2 + 1]) }
+                else when (ax) { 0 -> { out.add(v[2]); out.add(-v[1]) }; 1 -> { out.add(v[0]); out.add(v[2]) }; else -> { out.add(v[0]); out.add(-v[1]) } }
             }
         }
         return groups.map { it.key to it.value.toFloatArray() }
@@ -216,6 +264,7 @@ class SModel(val parts: MutableList<SPart> = ArrayList(), val clips: MutableList
             for (i in 0 until ps.length()) m.parts.add(SPart.fromJson(ps.getJSONObject(i)))
             val cs = o.optJSONArray("clips") ?: JSONArray()
             for (i in 0 until cs.length()) m.clips.add(SClip.fromJson(cs.getJSONObject(i)))
+            o.optJSONArray("rig")?.let { r -> for (i in 0 until r.length()) m.rig.add(SJoint.fromJson(r.getJSONObject(i))) }
             return m
         }
 

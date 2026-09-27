@@ -1,5 +1,6 @@
 // Host-side tests for the S Engine C++ script VM (run on CI: g++ -std=c++17 … && ./script_tests)
 #include "../script/SScript.h"
+#include "../engine/ModelKit.h"
 #include "../engine/Terrain.h"
 
 #include <chrono>
@@ -299,12 +300,105 @@ static void testTerrain() {
     printf("SIM terrain 65x65 min=%.2f max=%.2f in %.1f ms\n", lo, hi, ms);
 }
 
+static PolyMesh cube(float ox = 0) {
+    PolyMesh m;
+    for (int z = 0; z <= 1; z++) for (int y = 0; y <= 1; y++) for (int x = 0; x <= 1; x++) m.addVertex(x - 0.5f + ox, y - 0.5f, z - 0.5f);
+    int F[6][4] = {{4, 5, 7, 6}, {1, 0, 2, 3}, {5, 1, 3, 7}, {0, 4, 6, 2}, {2, 6, 7, 3}, {0, 1, 5, 4}};
+    for (auto& f : F) m.addFace({f[0], f[1], f[2], f[3]}, 0, 0);
+    return m;
+}
+
+/** every directed edge must have exactly one opposite partner (closed, consistently wound 2-manifold) */
+static bool watertight(const PolyMesh& m) {
+    std::map<std::pair<int, int>, int> e;
+    for (auto& f : m.f) for (size_t k = 0; k < f.size(); k++) e[{f[k], f[(k + 1) % f.size()]}]++;
+    for (auto& kv : e) {
+        if (kv.second != 1) return false;
+        auto o = e.find({kv.first.second, kv.first.first});
+        if (o == e.end() || o->second != 1) return false;
+    }
+    return true;
+}
+
+static void testModelKit() {
+    using namespace modelkit;
+    PolyMesh c = cube();
+    CHECK(watertight(c), "cube watertight");
+    // bevel all faces, 2 segments
+    auto caps = bevelFaces(c, {0, 1, 2, 3, 4, 5}, 0.3f, 0.1f, 2);
+    CHECK(caps.size() == 6 && c.f.size() == 6u + 6u * 4u * 2u, ("bevel faces " + std::to_string(c.f.size())).c_str());
+    CHECK(watertight(c), "bevel keeps the mesh closed");
+    // loop cut across edge (0,1): the ring through 4 quads
+    PolyMesh l = cube();
+    int cut = insertEdgeLoop(l, 0, 1, 0.5f);
+    CHECK(cut == 4 && l.f.size() == 10u && l.vertexCount() == 12, ("edge loop cut=" + std::to_string(cut) + " faces=" + std::to_string(l.f.size())).c_str());
+    CHECK(watertight(l), "edge loop keeps the mesh closed");
+    bool midOk = false;
+    for (int i = 8; i < l.vertexCount(); i++) if (fabs(l.v[i * 3]) < 1e-5f) midOk = true;
+    CHECK(midOk, "loop vertices at x=0");
+    // loop cut on a beveled cube stops at n-gons / continues around quad rings
+    int cut2 = insertEdgeLoop(c, c.f[6][0], c.f[6][1], 0.3f);
+    CHECK(cut2 >= 1 && watertight(c), ("loop on beveled cube cut=" + std::to_string(cut2)).c_str());
+    // bridge two cubes: +X face of A (index 2) with -X face of B (index 3)
+    PolyMesh b = cube(0);
+    PolyMesh b2 = cube(3);
+    int off = b.vertexCount();
+    for (size_t i = 0; i < b2.v.size(); i++) b.v.push_back(b2.v[i]);
+    for (auto f : b2.f) { for (auto& x : f) x += off; b.addFace(f, 0, 1); }
+    auto made = bridgeFaces(b, 2, 6 + 3, 3);
+    CHECK(made.size() == 12 && b.f.size() == 12u - 2u + 12u, ("bridge faces " + std::to_string(b.f.size())).c_str());
+    CHECK(watertight(b), "bridge makes one closed mesh");
+    bool thrown = false;
+    try { PolyMesh t = cube(); t.addFace({0, 1, 2}, 0, 0); bridgeFaces(t, 0, 6, 1); } catch (std::exception&) { thrown = true; }
+    CHECK(thrown, "bridge rejects faces with different vertex counts");
+    // PolyGroups
+    PolyMesh g = cube();
+    CHECK(autoPolyGroups(g, 30) == 6, "cube has 6 PolyGroups");
+    CHECK(selectGroups(g, {2}).size() == 1u, "select group");
+    CHECK(autoPolyGroups(g, 180) == 1, "180 degrees merges everything");
+    // UVs
+    PolyMesh u = cube();
+    unwrap(u, UV_SMART, 1);
+    bool inRange = true;
+    for (auto& fu : u.uv) { if (fu.size() != 8) inRange = false; for (float x : fu) if (x < -1e-4f || x > 1.0001f) inRange = false; }
+    CHECK(inRange, "smart UV charts packed inside 0..1");
+    unwrap(u, UV_CYLINDER, 1);
+    CHECK(u.uv[0].size() == 8, "cylindrical UVs");
+    // rigging: a 3-box tower, joints at y = 0, 1, 2
+    PolyMesh t;
+    for (int k = 0; k < 3; k++) {
+        PolyMesh cb = cube();
+        int o = t.vertexCount();
+        for (int i = 0; i < cb.vertexCount(); i++) t.addVertex(cb.v[i * 3] * 0.4f, cb.v[i * 3 + 1] + 0.5f + k, cb.v[i * 3 + 2] * 0.4f);
+        for (auto f : cb.f) { for (auto& x : f) x += o; t.addFace(f, 0, 0); }
+    }
+    auto seg = segmentRig(t, {0, 0, 0, 0, 1, 0, 0, 2, 0}, {-1, 0, 1});
+    CHECK(seg.size() == 18u && seg[2] == 0 && seg[8] == 1 && seg[14] == 2, "rig segmentation follows the bones");
+    // auto animation
+    std::vector<std::string> names = {"Torso", "Head", "ArmL", "ArmR", "LegL", "LegR"};
+    std::vector<int> parents = {-1, 0, 0, 0, -1, -1};
+    std::vector<float> rest;
+    float xs[6] = {0, 0, -0.5f, 0.5f, -0.18f, 0.18f};
+    for (int i = 0; i < 6; i++) { float r[9] = {xs[i], 1, 0, 0, 0, 0, 1, 1, 1}; rest.insert(rest.end(), r, r + 9); }
+    std::string walk = autoAnimate("Walk", names, parents, rest, 1.8f, 0);
+    CHECK(walk.find("\"ArmL\"") != std::string::npos && walk.find("\"LegR\"") != std::string::npos && walk.find("\"loop\":true") != std::string::npos, walk.substr(0, 120).c_str());
+    std::string wave = autoAnimate("Wave", names, parents, rest, 1.8f, 0);
+    CHECK(wave.find("\"ArmR\"") != std::string::npos && wave.find("\"ArmL\"") == std::string::npos && wave.find(",130.0000]") != std::string::npos, "wave raises the right arm");
+    std::string spin = autoAnimate("Spin", {"Box"}, {-1}, {0, 0, 0, 0, 0, 0, 1, 1, 1}, 1, 0);
+    CHECK(spin.find("360.0") != std::string::npos, "spin reaches 360");
+    thrown = false;
+    try { autoAnimate("Fly", names, parents, rest, 1, 0); } catch (std::exception&) { thrown = true; }
+    CHECK(thrown, "unknown animation kind");
+    printf("SIM modelkit bevel=%zu faces, loop=%d cuts, bridge=%zu faces, walk json=%zu chars\n", c.f.size(), cut, b.f.size(), walk.size());
+}
+
 int main() {
     testBasics();
     testBehaviour();
     testUnrealStyle();
     testPerformance();
     testTerrain();
+    testModelKit();
     printf("SIM native tests: %d passed, %d failed\n", passes, failures);
     return failures == 0 ? 0 : 1;
 }
