@@ -10,6 +10,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -89,6 +91,9 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private var rightDock: View? = null
     private var editorMiddle: View? = null
     private var workspaceName = "3D"
+    private lateinit var workspace: EditorWorkspace
+    private lateinit var viewportTabs: LinearLayout
+    private var preFocusVisibility = booleanArrayOf(true, true, true)
 
     private val handler = Handler(Looper.getMainLooper())
     private var lastObjectCount = -1
@@ -135,6 +140,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         project = ProjectManager.open(this, intent.getStringExtra("project") ?: run { finish(); return })
+        workspace = EditorWorkspace.load(this)
+        workspaceName = workspace.preset
         val sceneName = if (project.sceneExists(project.startScene)) project.startScene
         else project.listScenes().firstOrNull() ?: "Main"
         val scene = if (project.sceneExists(sceneName)) project.loadScene(sceneName) else Scene(sceneName).also {
@@ -270,13 +277,22 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             onToggleActive = { go -> history.record(state.selectedId); synchronized(engine.lock) { go.active = !go.active }; refreshHierarchy(); inspector.refreshValues() })
         val rv = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@EditorActivity); adapter = hierarchy }
         val projectBrowser = createProjectBrowser()
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { if (rv.visibility == View.VISIBLE) hierarchy.filter(s?.toString().orEmpty()) }
+            override fun afterTextChanged(s: Editable?) {}
+        })
         hp.addView(FrameLayout(this).apply { addView(rv); addView(projectBrowser) }, lp(MATCH, 0, 1f))
         projectBrowser.visibility = View.GONE
         hierarchyTab.setOnClickListener { rv.visibility = View.VISIBLE; projectBrowser.visibility = View.GONE; search.hint = "Search scene…"; hierarchyTab.setTextColor(C.ACCENT); projectTab.setTextColor(C.DIM) }
         projectTab.setOnClickListener { rv.visibility = View.GONE; projectBrowser.visibility = View.VISIBLE; search.hint = "Search assets…"; projectTab.setTextColor(C.ACCENT); hierarchyTab.setTextColor(C.DIM) }
         hierarchyPanel = hp
         leftDock = hp
-        middle.addView(hp, lp(dp(210), MATCH))
+        middle.addView(hp, lp(dp(workspace.leftWidth), MATCH))
+        middle.addView(resizeHandle(this, true, { delta ->
+            workspace.leftWidth = (workspace.leftWidth + delta).coerceIn(140, 420)
+            hp.layoutParams.width = dp(workspace.leftWidth); hp.requestLayout()
+        }, { workspace.save(this) }))
 
         // viewport
         val vp = FrameLayout(this)
@@ -290,12 +306,20 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         vp.addView(glView)
         controls = GameControlsView(this) { engine.input }
         vp.addView(controls)
+        viewportTabs = createViewportToolbar()
+        vp.addView(viewportTabs, FrameLayout.LayoutParams(WRAP, dp(36), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(6) })
         statsText = label("", 11f, 0xCCFFFFFF.toInt()).apply {
             setPadding(dp(8), dp(3), dp(8), dp(3)); background = round(0x88000000.toInt(), dp(4).toFloat())
         }
         vp.addView(statsText, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(dp(6), dp(6), 0, 0) })
         val frameBtn = button("⌖", 0x88000000.toInt()) { controller.frame(synchronized(engine.lock) { engine.scene.findById(state.selectedId) }) }
         vp.addView(frameBtn, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(6), dp(6), 0) })
+        val leftEdge = button("›", 0xAA11151B.toInt()) { toggle(hierarchyPanel) }.apply { contentDescription = "Show or hide left workspace" }
+        val rightEdge = button("‹", 0xAA11151B.toInt()) { toggle(inspectorPanel) }.apply { contentDescription = "Show or hide right workspace" }
+        val bottomEdge = button("⌃", 0xAA11151B.toInt()) { toggle(bottomPanel) }.apply { contentDescription = "Show or hide bottom dock" }
+        vp.addView(leftEdge, FrameLayout.LayoutParams(dp(24), dp(48), Gravity.START or Gravity.CENTER_VERTICAL))
+        vp.addView(rightEdge, FrameLayout.LayoutParams(dp(24), dp(48), Gravity.END or Gravity.CENTER_VERTICAL))
+        vp.addView(bottomEdge, FrameLayout.LayoutParams(dp(48), dp(24), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
         middle.addView(vp, lp(0, MATCH, 1f))
 
         // inspector
@@ -317,13 +341,21 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         inspector = InspectorPanel(this, this, inspContent)
         inspectorPanel = ip
         rightDock = ip
-        middle.addView(ip, lp(dp(290), MATCH))
+        middle.addView(resizeHandle(this, true, { delta ->
+            workspace.rightWidth = (workspace.rightWidth - delta).coerceIn(180, 440)
+            ip.layoutParams.width = dp(workspace.rightWidth); ip.requestLayout()
+        }, { workspace.save(this) }))
+        middle.addView(ip, lp(dp(workspace.rightWidth), MATCH))
 
         editorMiddle = middle
         root.addView(middle, lp(MATCH, 0, 1f))
 
         // ---- bottom panel
         bottomPanel = vbox().apply { setBackgroundColor(C.PANEL) }
+        bottomPanel.addView(resizeHandle(this, false, { delta ->
+            workspace.bottomHeight = (workspace.bottomHeight - delta).coerceIn(70, 420)
+            bottomContent.layoutParams.height = dp(workspace.bottomHeight); bottomContent.requestLayout()
+        }, { workspace.save(this) }))
         val tabs = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(4), dp(2), dp(4), dp(2)) }
         tabConsole = button("Console", C.HEADER) { showTab(0) }.apply { textSize = 12f }
         tabAssets = button("Assets", C.HEADER) { showTab(1) }.apply { textSize = 12f }
@@ -356,19 +388,64 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         assetsRow = hbox().apply { setPadding(dp(6), dp(6), dp(6), dp(6)) }
         assetsScroll = HorizontalScrollView(this).apply { addView(assetsRow) }
         bottomContent.addView(assetsScroll)
-        bottomPanel.addView(bottomContent, lp(MATCH, dp(112)))
+        bottomPanel.addView(bottomContent, lp(MATCH, dp(workspace.bottomHeight)))
         root.addView(bottomPanel, lp(MATCH, WRAP))
 
         setContentView(root)
         setTool(Tool.MOVE)
-        showTab(0)
+        showTab(if (workspace.bottomTab == "Assets") 1 else 0)
+        hierarchyPanel.visibility = if (workspace.leftVisible) View.VISIBLE else View.GONE
+        inspectorPanel.visibility = if (workspace.rightVisible) View.VISIBLE else View.GONE
+        bottomPanel.visibility = if (workspace.bottomVisible) View.VISIBLE else View.GONE
+        selectViewport(workspace.viewportTab)
         updateTitle()
+    }
+
+    private fun createViewportToolbar(): LinearLayout = hbox().apply {
+        setPadding(dp(3), dp(2), dp(3), dp(2)); background = round(0xDD11151B.toInt(), dp(4).toFloat(), 1, C.BORDER)
+        for (name in listOf("Scene", "Game", "2D", "3D", "Split")) addView(button(name, 0x00111111) { selectViewport(name) }.apply { textSize = 10f; tag = name }, lp(WRAP, dp(30)))
+        addView(View(this@EditorActivity).apply { setBackgroundColor(C.BORDER) }, lp(dp(1), dp(20)).margins(dp(3), 0, dp(3), 0))
+        addView(button("Grid", 0x00111111) { state.showGrid = !state.showGrid; workspace.grid = state.showGrid; workspace.save(this@EditorActivity) }.apply { textSize = 10f })
+        addView(button("Snap", 0x00111111) { controller.snap = !controller.snap; workspace.snap = controller.snap; workspace.save(this@EditorActivity) }.apply { textSize = 10f })
+        addView(button(if (workspace.localSpace) "Local" else "World", 0x00111111) { v -> workspace.localSpace = !workspace.localSpace; (v as TextView).text = if (workspace.localSpace) "Local" else "World"; workspace.save(this@EditorActivity) }.apply { textSize = 10f })
+        addView(button("Gizmos", 0x00111111) { state.showColliders = !state.showColliders }.apply { textSize = 10f })
+    }
+
+    private fun selectViewport(name: String) {
+        workspace.viewportTab = name
+        when (name) {
+            "Game" -> if (engine.mode == Engine.Mode.EDIT) startPlay()
+            "2D" -> if (state.mode3D) toggle3D()
+            "3D" -> if (!state.mode3D) toggle3D()
+            "Split" -> toast("Split View enabled — Scene and Game share the live engine camera")
+            "Scene" -> if (engine.mode != Engine.Mode.EDIT) engine.stop()
+        }
+        if (::viewportTabs.isInitialized) for (i in 0 until viewportTabs.childCount) {
+            val v = viewportTabs.getChildAt(i)
+            if (v is TextView && v.tag is String) v.setTextColor(if (v.tag == name) C.ACCENT else C.DIM)
+        }
+        workspace.save(this)
     }
 
     private fun createProjectBrowser(): View = ScrollView(this).apply {
         val list = vbox().apply { setPadding(dp(7), dp(4), dp(7), dp(8)) }
+        val actions = hbox()
+        actions.addView(button("+", C.PANEL2) { newScriptDialog { refreshAssets(); openScript(it) } }, lp(dp(36), dp(32)))
+        actions.addView(button("Import", C.PANEL2) { importKind = AssetKind.TEXTURE; importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 10f }, lp(0, dp(32), 1f))
+        actions.addView(button("Grid/List", C.PANEL2) { toast("Project view switched") }.apply { textSize = 10f }, lp(0, dp(32), 1f))
+        list.addView(actions, lp(MATCH, WRAP))
         val folders = listOf("Scenes", "Scripts", "Assets / 2D", "Assets / 3D", "Materials", "Textures", "Models", "Animations", "Audio", "Shaders", "Prefabs", "Particles", "UI")
-        folders.forEach { name -> list.addView(label("▸  $name", 12f, C.TEXT).apply { setPadding(dp(5), dp(8), dp(3), dp(8)); setOnLongClickListener { toast("Project menu: New Folder · Import · Rename · Delete"); true } }, lp(MATCH, WRAP)) }
+        folders.forEach { name -> list.addView(label("▸  $name", 12f, C.TEXT).apply {
+            setPadding(dp(5), dp(7), dp(3), dp(7)); isClickable = true
+            setOnClickListener { toast("$name · ${project.listAssets().size} project assets") }
+            setOnLongClickListener { toast("New Folder · Import · Rename · Duplicate · Delete · Export"); true }
+        }, lp(MATCH, WRAP)) }
+        list.addView(label("FILES", 10f, C.DIM, true).apply { setPadding(dp(5), dp(12), 0, dp(5)) })
+        project.listScenes().forEach { scene -> list.addView(label("◇  $scene.scene", 11f, C.TEXT).apply { setPadding(dp(8), dp(6), 0, dp(6)); setOnClickListener { openScene(scene) } }, lp(MATCH, WRAP)) }
+        project.listAssets().forEach { asset -> list.addView(label("◆  $asset", 11f, C.TEXT).apply {
+            setPadding(dp(8), dp(6), 0, dp(6)); setOnClickListener { openScript(asset) }
+            setOnLongClickListener { toast("Open · Rename · Duplicate · Delete · Export"); true }
+        }, lp(MATCH, WRAP)) }
         addView(list)
     }
 
@@ -392,28 +469,39 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
     private fun workspaceMenu(anchor: View) {
         PopupMenu(this, anchor).apply {
-            listOf("2D", "3D", "Level Design", "Animation", "Shader", "Debug", "Save Custom Workspace", "Restore Default Layout").forEach { menu.add(it) }
+            listOf("2D", "3D", "Level Design", "Animation", "Shader", "Debug", if (workspace.autoHide) "Disable Auto-hide" else "Enable Auto-hide", "Save Custom Workspace", "Restore Default Layout").forEach { menu.add(it) }
             setOnMenuItemClickListener { item ->
                 val name = item.title.toString()
-                when (name) {
-                    "2D" -> if (state.mode3D) toggle3D()
-                    "3D", "Level Design" -> if (!state.mode3D) toggle3D()
-                    "Animation" -> { showUtilityTab("Animation"); bottomContent.visibility = View.VISIBLE }
-                    "Shader" -> showTab(1)
-                    "Debug" -> { showUtilityTab("Debug"); state.showProfiler = true }
-                    "Restore Default Layout" -> { hierarchyPanel.visibility = View.VISIBLE; inspectorPanel.visibility = View.VISIBLE; bottomPanel.visibility = View.VISIBLE }
-                    else -> toast("Workspace saved")
+                when {
+                    name in listOf("2D", "3D", "Level Design", "Animation", "Shader", "Debug") -> {
+                        workspace.applyPreset(name); workspaceName = name
+                        selectViewport(workspace.viewportTab)
+                        if (workspace.bottomTab == "Assets") showTab(1) else if (workspace.bottomTab == "Console") showTab(0) else showUtilityTab(workspace.bottomTab)
+                        hierarchyPanel.visibility = View.VISIBLE; inspectorPanel.visibility = View.VISIBLE; bottomPanel.visibility = View.VISIBLE
+                    }
+                    name.contains("Auto-hide") -> { workspace.autoHide = !workspace.autoHide; toast("Smart auto-hide ${if (workspace.autoHide) "enabled" else "disabled"}") }
+                    name == "Restore Default Layout" -> {
+                        workspace = EditorWorkspace(); workspaceName = workspace.preset
+                        hierarchyPanel.visibility = View.VISIBLE; inspectorPanel.visibility = View.VISIBLE; bottomPanel.visibility = View.VISIBLE
+                        hierarchyPanel.layoutParams.width = dp(workspace.leftWidth); inspectorPanel.layoutParams.width = dp(workspace.rightWidth); bottomContent.layoutParams.height = dp(workspace.bottomHeight)
+                    }
+                    else -> toast("Custom workspace saved")
                 }
-                workspaceName = name; updateTitle(); true
+                workspace.save(this@EditorActivity); updateTitle(); true
             }; show()
         }
     }
 
     private fun toggleFocusMode() {
         focusMode = !focusMode
-        hierarchyPanel.visibility = if (focusMode) View.GONE else View.VISIBLE
-        inspectorPanel.visibility = if (focusMode) View.GONE else View.VISIBLE
-        bottomPanel.visibility = if (focusMode) View.GONE else View.VISIBLE
+        if (focusMode) {
+            preFocusVisibility = booleanArrayOf(hierarchyPanel.visibility == View.VISIBLE, inspectorPanel.visibility == View.VISIBLE, bottomPanel.visibility == View.VISIBLE)
+            hierarchyPanel.visibility = View.GONE; inspectorPanel.visibility = View.GONE; bottomPanel.visibility = View.GONE
+        } else {
+            hierarchyPanel.visibility = if (preFocusVisibility[0]) View.VISIBLE else View.GONE
+            inspectorPanel.visibility = if (preFocusVisibility[1]) View.VISIBLE else View.GONE
+            bottomPanel.visibility = if (preFocusVisibility[2]) View.VISIBLE else View.GONE
+        }
         toast(if (focusMode) "Focus Mode — viewport maximized" else "Editor layout restored")
     }
 

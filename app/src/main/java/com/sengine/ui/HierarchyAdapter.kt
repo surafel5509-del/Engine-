@@ -23,6 +23,8 @@ class HierarchyAdapter(
     class Row(val go: GameObject, val depth: Int, val hasChildren: Boolean, val name: String, val active: Boolean, val icon: String)
 
     private var rows: List<Row> = emptyList()
+    private var sourceRows: List<Row> = emptyList()
+    private var query = ""
     val collapsed = HashSet<Long>()
     var selectedId = -1L
 
@@ -38,7 +40,17 @@ class HierarchyAdapter(
             out.add(Row(go, depth, hasChildren, go.name, go.active, iconFor(go)))
             if (hasChildren && go.id in collapsed) hideDepth = depth
         }
-        rows = out
+        sourceRows = out
+        applyFilter()
+    }
+
+    fun filter(text: String) {
+        query = text.trim().lowercase()
+        applyFilter()
+    }
+
+    private fun applyFilter() {
+        rows = if (query.isBlank()) sourceRows else sourceRows.filter { it.name.lowercase().contains(query) || it.go.tag.lowercase().contains(query) }
         notifyDataSetChanged()
     }
 
