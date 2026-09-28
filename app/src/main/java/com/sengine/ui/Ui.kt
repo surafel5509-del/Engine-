@@ -16,23 +16,23 @@ import android.widget.TextView
 
 /** Monochrome "Noir" palette: pure black surfaces, white accents, status colours kept subtle. */
 object C {
-    const val BG = 0xFF000000.toInt()
-    const val PANEL = 0xFF0F0F0F.toInt()
-    const val PANEL2 = 0xFF1E1E1E.toInt()
-    const val HEADER = 0xFF080808.toInt()
-    const val FIELD = 0xFF050505.toInt()
-    const val ACCENT = 0xFFF5F5F5.toInt()
-    const val ACCENT2 = 0xFFBDBDBD.toInt()
-    const val TEXT = 0xFFF2F2F2.toInt()
-    const val DIM = 0xFF8C8C8C.toInt()
-    const val SEL = 0xFF3A3A3A.toInt()
+    const val BG = 0xFF0B0E12.toInt()
+    const val PANEL = 0xFF13171C.toInt()
+    const val PANEL2 = 0xFF1B2027.toInt()
+    const val HEADER = 0xFF101419.toInt()
+    const val FIELD = 0xFF0D1116.toInt()
+    const val ACCENT = 0xFF52A8FF.toInt()
+    const val ACCENT2 = 0xFF8FC7FF.toInt()
+    const val TEXT = 0xFFE6EAF0.toInt()
+    const val DIM = 0xFF8D96A3.toInt()
+    const val SEL = 0xFF243B55.toInt()
     const val RED = 0xFFFF5A5A.toInt()
     const val GREEN = 0xFF6EE7A8.toInt()
     const val YELLOW = 0xFFF5D06B.toInt()
     const val ORANGE = 0xFFFFA566.toInt()
     const val PURPLE = 0xFFC4B5FD.toInt()
     const val PINK = 0xFFF9A8D4.toInt()
-    const val BORDER = 0xFF2B2B2B.toInt()
+    const val BORDER = 0xFF2A313A.toInt()
 
     /** True when [c] is a light colour (text on it must be dark). */
     fun isLight(c: Int): Boolean {
@@ -69,7 +69,7 @@ fun Context.button(text: String, color: Int = C.PANEL2, textColor: Int = C.TEXT,
         gravity = Gravity.CENTER
         setPadding(dp(12), dp(6), dp(12), dp(6))
         minWidth = dp(40)
-        background = RippleDrawable(ColorStateList.valueOf(if (C.isLight(color)) 0x33000000 else 0x44FFFFFF), round(color, dp(8).toFloat(), if (C.isLight(color)) 0 else 1, C.BORDER), null)
+        background = RippleDrawable(ColorStateList.valueOf(if (C.isLight(color)) 0x33000000 else 0x44FFFFFF), round(color, dp(3).toFloat(), if (C.isLight(color)) 0 else 1, C.BORDER), null)
         isClickable = true
         isFocusable = true
         setOnClickListener(onClick)
