@@ -1,4 +1,4 @@
-# S Engine — v6 Studio Edition
+# S Engine — v6 Studio Edition #
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 
