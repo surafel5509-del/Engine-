@@ -70,9 +70,11 @@ class PhysicsWorld3D {
     }
 
     private fun voxelOf(scene: Scene): Pair<GameObject, VoxelData>? {
-        for (go in scene.objects) {
+        val worlds = scene.index.voxelWorlds
+        for (wi in worlds.indices) {
+            val v = worlds[wi]
+            val go = v.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val v = go.get<VoxelWorld>() ?: continue
             val d = v.data ?: continue
             return go to d
         }
@@ -82,10 +84,12 @@ class PhysicsWorld3D {
     private var currentWaters: List<com.sengine.engine.core.Water> = emptyList()
 
     private fun fixed(scene: Scene, dt: Float) {
-        // integrate
-        for (go in scene.objects) {
+        // integrate (via the per-frame component index — one linear pass, no per-body instanceof scans)
+        val rbs = scene.index.rigidbodies3
+        for (ri in rbs.indices) {
+            val rb = rbs[ri]
+            val go = rb.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val rb = go.get<Rigidbody3D>() ?: continue
             rb.grounded = false
             when (rb.bodyType) {
                 0 -> {
@@ -100,9 +104,11 @@ class PhysicsWorld3D {
             }
         }
         val bodies = ArrayList<Body>()
-        for (go in scene.objects) {
+        val cols = scene.index.colliders3
+        for (ci in cols.indices) {
+            val col = cols[ci]
+            val go = col.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val col = go.get<Collider3D>() ?: continue
             val b = Body(go, go.get(), col); refresh(b); bodies.add(b)
         }
         bodyCount = bodies.size
@@ -170,9 +176,11 @@ class PhysicsWorld3D {
 
     private fun landscapes(scene: Scene): List<Pair<GameObject, com.sengine.engine.core.Landscape>> {
         var out: ArrayList<Pair<GameObject, com.sengine.engine.core.Landscape>>? = null
-        for (go in scene.objects) {
+        val lands = scene.index.landscapes
+        for (li in lands.indices) {
+            val l = lands[li]
+            val go = l.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val l = go.get<com.sengine.engine.core.Landscape>() ?: continue
             l.ensure()
             (out ?: ArrayList<Pair<GameObject, com.sengine.engine.core.Landscape>>().also { out = it }).add(go to l)
         }
