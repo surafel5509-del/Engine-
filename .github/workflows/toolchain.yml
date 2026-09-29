@@ -25,6 +25,8 @@ jobs:
       - name: Gather toolchain
         run: |
           mkdir -p out src
+          set -x
+          {
           # Kotlin compiler (runners can reach release assets)
           curl -sL --retry 3 -o kotlinc.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
           unzip -q kotlinc.zip -d out
@@ -37,12 +39,15 @@ jobs:
           # org.json (test runtime; shadows the android stub)
           curl -sL --retry 3 -o json.tgz https://codeload.github.com/stleary/JSON-java/tar.gz/refs/tags/20231013
           mkdir -p src/json && tar xzf json.tgz -C src/json --strip-components=1
-          "$JAVA_HOME/bin/javac" -nowarn -d src/json-classes src/json/*.java
-          "$JAVA_HOME/bin/jar" cf out/org-json-20231013.jar -C src/json-classes .
+          "$JAVA_HOME/bin/javac" -nowarn -d src/json-classes src/json/org/json/*.java
+          "$JAVA_HOME/bin/jar" cf out/org-json-20231013.jar -C src/json-classes org
           # hamcrest 1.3 + junit 4.13.2 from source
           curl -sL --retry 3 -o hamcrest.tgz https://codeload.github.com/hamcrest/JavaHamcrest/tar.gz/refs/tags/hamcrest-java-1.3
           mkdir -p src/hamcrest && tar xzf hamcrest.tgz -C src/hamcrest --strip-components=1
-          "$JAVA_HOME/bin/javac" -nowarn -d src/hamcrest-classes $(find src/hamcrest/hamcrest-core/src/main/java -name '*.java')
+          find src/hamcrest -maxdepth 1
+          HCF=$(find src/hamcrest -path '*hamcrest-core*' -name '*.java' | grep -iv test)
+          echo "hamcrest files: $(echo "$HCF" | wc -l)"
+          "$JAVA_HOME/bin/javac" -nowarn -d src/hamcrest-classes $HCF
           "$JAVA_HOME/bin/jar" cf out/hamcrest-core-1.3.jar -C src/hamcrest-classes .
           curl -sL --retry 3 -o junit.tgz https://codeload.github.com/junit-team/junit4/tar.gz/refs/tags/r4.13.2
           mkdir -p src/junit && tar xzf junit.tgz -C src/junit --strip-components=1
@@ -50,11 +55,14 @@ jobs:
           "$JAVA_HOME/bin/jar" cf out/junit-4.13.2.jar -C src/junit-classes .
           # Rhino (JavaScript runtime)
           curl -sL --retry 3 -o out/rhino-1.7.13.jar https://github.com/mozilla/rhino/releases/download/Rhino1_7_13_Release/rhino-1.7.13.jar
-          rm -rf out/kotlinc/lib/kotlin-ant.jar
-          du -sh out/* | sort -h
+          } 2>&1 | tee gather.log || true
+          ls -la out | tee -a gather.log || true
+          du -sh out/* | sort -h | tee -a gather.log || true
 
       - name: Commit to toolchain-cache
+        if: always()
         run: |
+          cp gather.log out/gather.log 2>/dev/null || echo "no gather.log" > out/gather.log
           cd out
           git init -q -b toolchain-cache
           git config user.email "arena@localhost"

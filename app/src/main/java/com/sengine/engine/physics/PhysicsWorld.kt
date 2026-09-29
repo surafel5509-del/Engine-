@@ -10,8 +10,12 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * Lightweight impulse-based 2D physics: axis-aligned boxes and circles,
- * gravity, restitution, friction, triggers and collision callbacks.
+ * Impulse-based 2D physics: axis-aligned boxes and circles, gravity, restitution,
+ * friction, triggers and collision callbacks.
+ *
+ * v7 Pro: bodies are pooled (no per-step allocation), broadphase is a uniform
+ * spatial hash grid (O(n) neighbourhood queries instead of O(n²) all-pairs) and
+ * the solver exposes iteration count, pair/contact stats for the profiler.
  */
 class PhysicsWorld {
 
@@ -24,45 +28,85 @@ class PhysicsWorld {
     var listener: Listener? = null
     private var accumulator = 0f
     private val fixedDt = 1f / 60f
+    /** Physics sub-steps allowed per frame; excess accumulated time is dropped. */
+    var maxSteps = 5
 
-    private class Body(
-        val go: GameObject,
-        val rb: Rigidbody2D?,
-        val col: Collider2D,
-        var cx: Float = 0f, var cy: Float = 0f,
-        var hw: Float = 0f, var hh: Float = 0f, var r: Float = 0f
-    ) {
+    /** Solver iterations per step (1 = classic behaviour, raise for taller stacks). */
+    var iterations = 1
+    /** Broadphase cell size override; 0 = automatic from body sizes. */
+    var broadphaseCell = 0f
+    /** Broadphase diagnostics for the profiler. */
+    var bodyCount = 0; private set
+    var pairTests = 0; private set
+    var contactCount = 0; private set
+
+    private class Body {
+        lateinit var go: GameObject
+        var rb: Rigidbody2D? = null
+        lateinit var col: Collider2D
+        var cx = 0f; var cy = 0f
+        var hw = 0f; var hh = 0f; var r = 0f
+        var slot = 0
         val isCircle get() = col.shape == 1
         val invMass: Float
             get() = if (rb == null || rb.bodyType != 0) 0f else 1f / rb.mass
+        val minX get() = if (isCircle) cx - r else cx - hw
+        val maxX get() = if (isCircle) cx + r else cx + hw
+        val minY get() = if (isCircle) cy - r else cy - hh
+        val maxY get() = if (isCircle) cy + r else cy + hh
     }
 
     private var prevContacts = HashSet<Long>()
     private var prevTriggers = HashSet<Long>()
 
+    // pooled state
+    private val bodies = ArrayList<Body>()
+    private val bodyPool = ArrayDeque<Body>()
+
+    // spatial hash broadphase (reused every step)
+    private val grid = HashMap<Long, ArrayList<Body>>()
+    private val gridBinPool = ArrayDeque<ArrayList<Body>>()
+    private val bigBodies = ArrayList<Body>()
+    private val candidatePairs = HashSet<Long>()
+    private var autoCell = 2f
+
     fun reset() {
         accumulator = 0f
         prevContacts = HashSet(); prevTriggers = HashSet()
+        releaseBodies()
+    }
+
+    private fun releaseBodies() {
+        for (b in bodies) bodyPool.addLast(b)
+        bodies.clear()
+        for (bin in grid.values) { bin.clear(); gridBinPool.addLast(bin) }
+        grid.clear()
+        bigBodies.clear()
+        candidatePairs.clear()
     }
 
     fun step(scene: Scene, dt: Float) {
         accumulator += min(dt, 0.25f)
         var steps = 0
-        while (accumulator >= fixedDt && steps < 5) {
+        val cap = maxSteps.coerceIn(1, 10)
+        while (accumulator >= fixedDt && steps < cap) {
             fixedStep(scene, fixedDt)
             accumulator -= fixedDt
             steps++
         }
-        if (steps == 5) accumulator = 0f
+        if (steps == cap) accumulator = 0f
     }
 
     private fun fixedStep(scene: Scene, dt: Float) {
         val waters = WaterPhysics.volumes(scene, 0)
         for (w in waters) w.tick(dt, scene.gravityY.coerceAtMost(-4f))
         // integrate
-        for (go in scene.objects) {
+        val idx = scene.index
+        val rbs = idx.rigidbodies2
+        for (i in rbs.indices) {
+            val rb = rbs[i]
+            val go = rb.gameObject ?: continue
             if (!go.isActiveInHierarchy()) continue
-            val rb = go.get<Rigidbody2D>() ?: continue
             rb.grounded = false
             when (rb.bodyType) {
                 0 -> {
@@ -80,34 +124,72 @@ class PhysicsWorld {
             }
         }
 
-        // gather bodies
-        val bodies = ArrayList<Body>()
-        for (go in scene.objects) {
+        // gather bodies (pooled)
+        var n = 0
+        val cols = idx.colliders2
+        for (i in cols.indices) {
+            val col = cols[i]
+            val go = col.gameObject ?: continue
             if (!go.isActiveInHierarchy()) continue
-            val col = go.get<Collider2D>() ?: continue
-            val b = Body(go, go.get(), col)
-            refresh(b)
-            bodies.add(b)
+            val b = obtainBody(go, go.get(), col, n) ?: continue
+            refresh(b); n++
+        }
+        trimBodies(n)
+        bodyCount = n
+
+        // ---- broadphase: uniform spatial hash with an oversized-body fast path
+        candidatePairs.clear()
+        bigBodies.clear()
+        for (bin in grid.values) { bin.clear(); gridBinPool.addLast(bin) }
+        grid.clear()
+        pairTests = 0
+        if (n > 1) {
+            var extent = 0f
+            for (i in 0 until n) {
+                val b = bodies[i]
+                extent += if (b.isCircle) b.r else max(b.hw, b.hh)
+            }
+            val avg = extent / n
+            autoCell = if (broadphaseCell > 0f) broadphaseCell else (avg * 4f).coerceIn(0.5f, 24f)
+            val inv = 1f / autoCell
+            for (i in 0 until n) {
+                val b = bodies[i]
+                val x0 = floorDiv(b.minX * inv); val x1 = floorDiv(b.maxX * inv)
+                val y0 = floorDiv(b.minY * inv); val y1 = floorDiv(b.maxY * inv)
+                if ((x1 - x0 + 1) * (y1 - y0 + 1) > 16) { bigBodies.add(b); continue }
+                var cx = x0
+                while (cx <= x1) {
+                    var cy = y0
+                    while (cy <= y1) {
+                        grid.getOrPut(cellKey(cx, cy)) { gridBinPool.removeLastOrNull() ?: ArrayList(8) }.add(b)
+                        cy++
+                    }
+                    cx++
+                }
+            }
+            for ((_, bin) in grid) {
+                for (i in 0 until bin.size) for (j in i + 1 until bin.size) addCandidate(bin[i], bin[j])
+            }
+            for (big in bigBodies) for (i in 0 until n) if (bodies[i] !== big) addCandidate(big, bodies[i])
         }
 
         val contacts = HashSet<Long>()
         val triggers = HashSet<Long>()
-        for (i in 0 until bodies.size) {
-            for (j in i + 1 until bodies.size) {
-                val a = bodies[i]
-                val b = bodies[j]
-                if (a.invMass == 0f && b.invMass == 0f && !a.col.isTrigger && !b.col.isTrigger) continue
-                val m = collide(a, b) ?: continue
-                val key = pairKey(a.go.id, b.go.id)
-                if (a.col.isTrigger || b.col.isTrigger) {
-                    triggers.add(key)
-                    if (key !in prevTriggers) listener?.onTriggerEnter(a.go, b.go)
-                    continue
-                }
-                contacts.add(key)
-                resolve(a, b, m)
-                if (key !in prevContacts) listener?.onCollisionEnter(a.go, b.go)
+        for (key in candidatePairs) {
+            val a = bodies[((key shr 20) and 0xFFFFFL).toInt()]
+            val b = bodies[(key and 0xFFFFFL).toInt()]
+            if (a.invMass == 0f && b.invMass == 0f && !a.col.isTrigger && !b.col.isTrigger) continue
+            pairTests++
+            val m = collide(a, b) ?: continue
+            val objKey = pairKey(a.go.id, b.go.id)
+            if (a.col.isTrigger || b.col.isTrigger) {
+                triggers.add(objKey)
+                if (objKey !in prevTriggers) listener?.onTriggerEnter(a.go, b.go)
+                continue
             }
+            contacts.add(objKey)
+            resolve(a, b, m)
+            if (objKey !in prevContacts) listener?.onCollisionEnter(a.go, b.go)
         }
         for (k in prevTriggers) if (k !in triggers) {
             val a = scene.findById(k shr 32)
@@ -116,6 +198,38 @@ class PhysicsWorld {
         }
         prevContacts = contacts
         prevTriggers = triggers
+        contactCount = contacts.size
+    }
+
+    private fun obtainBody(go: GameObject, rb: Rigidbody2D?, col: Collider2D, at: Int): Body? {
+        val b: Body
+        if (at < bodies.size) {
+            b = bodies[at]
+        } else {
+            b = bodyPool.removeLastOrNull() ?: Body()
+            bodies.add(b)
+        }
+        b.go = go; b.rb = rb; b.col = col; b.slot = at
+        return b
+    }
+
+    private fun trimBodies(n: Int) {
+        while (bodies.size > n) bodyPool.addLast(bodies.removeAt(bodies.size - 1))
+    }
+
+    private fun addCandidate(a: Body, b: Body) {
+        if (a.slot == b.slot) return
+        val lo: Int; val hi: Int
+        if (a.slot < b.slot) { lo = a.slot; hi = b.slot } else { lo = b.slot; hi = a.slot }
+        if (hi >= 0xFFFFF) return // body count overflow guard (1M bodies)
+        candidatePairs.add((lo.toLong() shl 20) or hi.toLong())
+    }
+
+    private fun cellKey(cx: Int, cy: Int): Long = (cx.toLong() shl 32) or (cy.toLong() and 0xFFFFFFFFL)
+
+    private fun floorDiv(v: Float): Int {
+        val i = v.toInt()
+        return if (v < 0f && i.toFloat() != v) i - 1 else i
     }
 
     private fun pairKey(a: Long, b: Long): Long {
@@ -196,12 +310,18 @@ class PhysicsWorld {
     }
 
     private fun resolve(a: Body, b: Body, m: Manifold) {
+        for (pass in 0 until iterations) {
+            resolveOnce(a, b, m, pass > 0)
+        }
+    }
+
+    private fun resolveOnce(a: Body, b: Body, m: Manifold, relax: Boolean) {
         val ia = a.invMass
         val ib = b.invMass
         val sum = ia + ib
         if (sum == 0f) return
         // positional correction
-        val corr = max(m.depth - 0.001f, 0f) / sum * 0.9f
+        val corr = max(m.depth - 0.001f, 0f) / sum * (if (relax) 0.45f else 0.9f)
         if (ia > 0f) moveWorld(a.go, -m.nx * corr * ia, -m.ny * corr * ia)
         if (ib > 0f) moveWorld(b.go, m.nx * corr * ib, m.ny * corr * ib)
 

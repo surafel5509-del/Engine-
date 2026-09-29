@@ -23,6 +23,8 @@ import kotlin.math.sqrt
 class PhysicsWorld3D {
     var listener: PhysicsWorld.Listener? = null
     var iterations = 4
+    /** Physics sub-steps allowed per frame; excess accumulated time is dropped. */
+    var maxSteps = 5
     private var accumulator = 0f
     private val fixedDt = 1f / 60f
     private var prevContacts = HashSet<Long>()
@@ -55,8 +57,9 @@ class PhysicsWorld3D {
         if (scene.objects.none { it.getAny<Collider3D>() != null || it.getAny<Rigidbody3D>() != null }) return
         accumulator += min(dt, 0.25f)
         var n = 0
-        while (accumulator >= fixedDt && n < 5) { fixed(scene, fixedDt); accumulator -= fixedDt; n++ }
-        if (n == 5) accumulator = 0f
+        val cap = maxSteps.coerceIn(1, 10)
+        while (accumulator >= fixedDt && n < cap) { fixed(scene, fixedDt); accumulator -= fixedDt; n++ }
+        if (n == cap) accumulator = 0f
     }
 
     private fun move(go: GameObject, dx: Float, dy: Float, dz: Float) {
