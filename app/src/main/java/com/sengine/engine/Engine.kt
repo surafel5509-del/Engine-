@@ -194,7 +194,7 @@ class Engine(val project: Project, initialScene: Scene) {
         val sources = scene.index.audioSources
         for (i in sources.indices) {
             val src = sources[i]
-            val go = src.gameObject ?: continue
+            val go = src.gameObject
             if (!go.isActiveInHierarchy()) continue
             if (src.playOnStart) audio.play(src.clip, src.volume, src.loop)
         }
@@ -304,8 +304,8 @@ class Engine(val project: Project, initialScene: Scene) {
     private fun prepareVoxels(all: Boolean) {
         val worlds = scene.index.voxelWorlds
         for (wi in worlds.indices) {
-            val go = worlds[wi].gameObject ?: continue
             val vw = worlds[wi]
+            val go = vw.gameObject
             if (!go.isActiveInHierarchy()) continue
             var d = vw.data
             val key = vw.genKey()
@@ -328,7 +328,7 @@ class Engine(val project: Project, initialScene: Scene) {
 
     fun mainCamera3D(): GameObject? {
         val cams = scene.index.cameras3
-        for (i in cams.indices) { val go = cams[i].gameObject; if (go != null && go.isActiveInHierarchy()) return go }
+        for (i in cams.indices) { val go = cams[i].gameObject; if (go.isActiveInHierarchy()) return go }
         return null
     }
 
@@ -336,7 +336,7 @@ class Engine(val project: Project, initialScene: Scene) {
         val anims = scene.index.animators
         for (i in anims.indices) {
             val a = anims[i]
-            val go = a.gameObject ?: continue
+            val go = a.gameObject
             val sr = go.getAny<com.sengine.engine.core.SpriteRenderer>() ?: continue
             if (playing && !go.isActiveInHierarchy()) continue
             animation.update(a, sr, dt, playing)
@@ -367,7 +367,7 @@ class Engine(val project: Project, initialScene: Scene) {
 
     fun mainCamera(): GameObject? {
         val cams = scene.index.cameras2
-        for (i in cams.indices) { val go = cams[i].gameObject; if (go != null && go.isActiveInHierarchy()) return go }
+        for (i in cams.indices) { val go = cams[i].gameObject; if (go.isActiveInHierarchy()) return go }
         return null
     }
 
@@ -410,7 +410,7 @@ class Engine(val project: Project, initialScene: Scene) {
         var total = 0
         for (ei in emitters.indices) {
             val pe = emitters[ei]
-            val go = pe.gameObject ?: continue
+            val go = pe.gameObject
             val alive = go.isActiveInHierarchy() && pe.enabled
             val w = go.world
             if (alive && pe.emitting) pe.accumulator += pe.rate * dt

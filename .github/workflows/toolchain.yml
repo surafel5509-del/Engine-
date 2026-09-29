@@ -39,9 +39,9 @@ jobs:
           # org.json (test runtime; shadows the android stub)
           curl -sL --retry 3 -o json.tgz https://codeload.github.com/stleary/JSON-java/tar.gz/refs/tags/20231013
           mkdir -p src/json && tar xzf json.tgz -C src/json --strip-components=1
-          JSONF=$(find src/json -name '*.java' -path '*org/json*')
+          JSONF=$(find src/json -name '*.java' -path '*org/json*' -not -ipath '*test*' -not -ipath '*example*')
           echo "json files: $(echo "$JSONF" | wc -l)"
-          "$JAVA_HOME/bin/javac" -nowarn -d src/json-classes $JSONF
+          "$JAVA_HOME/bin/javac" -nowarn -Xmaxerrs 20 -d src/json-classes $JSONF
           "$JAVA_HOME/bin/jar" cf out/org-json-20231013.jar -C src/json-classes org
           # Rhino (JavaScript runtime)
           curl -sL --retry 3 -o out/rhino-1.7.13.jar https://github.com/mozilla/rhino/releases/download/Rhino1_7_13_Release/rhino-1.7.13.jar

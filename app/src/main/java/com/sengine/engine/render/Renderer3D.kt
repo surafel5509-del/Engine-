@@ -85,7 +85,7 @@ class Renderer3D {
         val lights = scene.index.lights
         for (i in lights.indices) {
             val l = lights[i]
-            val go = l.gameObject ?: continue
+            val go = l.gameObject
             if (!go.isActiveInHierarchy()) continue
             val w = go.world3
             if (l.kind == 0) {

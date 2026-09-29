@@ -49,7 +49,10 @@ class PhysicsWorld {
         var slot = 0
         val isCircle get() = col.shape == 1
         val invMass: Float
-            get() = if (rb == null || rb.bodyType != 0) 0f else 1f / rb.mass
+            get() {
+                val r = rb
+                return if (r == null || r.bodyType != 0) 0f else 1f / r.mass
+            }
         val minX get() = if (isCircle) cx - r else cx - hw
         val maxX get() = if (isCircle) cx + r else cx + hw
         val minY get() = if (isCircle) cy - r else cy - hh
@@ -363,11 +366,14 @@ class PhysicsWorld {
     }
 
     /** Returns first active object whose collider contains the world point. */
+    private val queryBody = Body()
+
     fun overlapPoint(scene: Scene, x: Float, y: Float): GameObject? {
         for (go in scene.objects.asReversed()) {
             if (!go.isActiveInHierarchy()) continue
             val col = go.get<Collider2D>() ?: continue
-            val b = Body(go, null, col)
+            val b = queryBody
+            b.go = go; b.rb = null; b.col = col
             refresh(b)
             val hit = if (b.isCircle) {
                 val dx = x - b.cx; val dy = y - b.cy; dx * dx + dy * dy <= b.r * b.r
@@ -388,7 +394,8 @@ class PhysicsWorld {
             val col = go.get<Collider2D>() ?: continue
             if (col.isTrigger && !triggers) continue
             if (tag.isNotEmpty() && go.tag != tag) continue
-            val b = Body(go, null, col)
+            val b = queryBody
+            b.go = go; b.rb = null; b.col = col
             refresh(b)
             if (b.isCircle) {
                 val fx = ox - b.cx; val fy = oy - b.cy

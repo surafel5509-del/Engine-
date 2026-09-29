@@ -380,7 +380,6 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         itemCount = 0
         val objs = sortedObjects()
         transparentItems.clear()
-        casters.clear()
         for (go in objs) {
             val mr = go.get<MeshRenderer>() ?: continue
             if (GL.a(mr.color) < 0.999f) { addTransparent(transparentItems, go, v.distanceTo(go.world3[12], go.world3[13], go.world3[14])); continue }

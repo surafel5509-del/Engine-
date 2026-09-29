@@ -94,8 +94,6 @@ class Scene(var name: String) {
         drawListDirty = true
     }
 
-    private val tmp3 = FloatArray(16)
-
     /** Frame stamp bumped by [updateTransforms]; used to scope per-frame memo caches. */
     @Volatile var frameStamp = 0L
         private set
