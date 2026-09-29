@@ -35,6 +35,8 @@ class PhysicsWorld {
     var iterations = 1
     /** Broadphase cell size override; 0 = automatic from body sizes. */
     var broadphaseCell = 0f
+    /** Spatial-hash broadphase switch (off = brute-force all pairs, for A/B testing). */
+    var broadphaseEnabled = true
     /** Broadphase diagnostics for the profiler. */
     var bodyCount = 0; private set
     var pairTests = 0; private set
@@ -146,7 +148,10 @@ class PhysicsWorld {
         for (bin in grid.values) { bin.clear(); gridBinPool.addLast(bin) }
         grid.clear()
         pairTests = 0
-        if (n > 1) {
+        if (n > 1 && !broadphaseEnabled) {
+            for (i in 0 until n) for (j in i + 1 until n) addCandidate(bodies[i], bodies[j])
+        }
+        if (n > 1 && broadphaseEnabled) {
             var extent = 0f
             for (i in 0 until n) {
                 val b = bodies[i]

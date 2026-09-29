@@ -43,8 +43,10 @@ class Renderer2D {
     var batches = 0
     /** Enables GPU sprite batching (auto-disabled when the batch program fails to compile). */
     var batching = true
-        set(value) { field = value && batchOk; if (!field) flush() }
-    private val batchingOn get() = batching && batchOk
+        set(value) { field = value && batchingOn; if (!field) flush() }
+    /** True when the batched program is usable on this device (tests may override). */
+    internal var batchProgramReady = false
+    private val batchingOn get() = batching && (batchOk || batchProgramReady)
 
     /** Parameters for shape 4 (rounded rectangle): width/height ratio and corner radius in height units. */
     var roundAspect = 1f
@@ -218,6 +220,11 @@ class Renderer2D {
         quadModel(model, color, shape, tex, aaPixels, flipX, flipY, uv, program, param)
     }
 
+    /** True when a 4x4 matrix only translates/rotates around Z/scales in the XY plane (safe to flatten into the 2D batch). */
+    private fun is2DAffine(m: FloatArray): Boolean =
+        m[2] == 0f && m[3] == 0f && m[6] == 0f && m[7] == 0f && m[8] == 0f && m[9] == 0f &&
+            m[10] == 1f && m[11] == 0f && m[14] == 0f && m[15] == 1f
+
     private fun uvRect(uv: FloatArray?, flipX: Boolean, flipY: Boolean): FloatArray {
         val q = uv ?: defaultUv
         val u0 = if (flipX) q[2] else q[0]
@@ -232,7 +239,7 @@ class Renderer2D {
     /** Draw a unit quad (XY plane) with a full 4x4 model matrix. */
     fun quadModel(modelM: FloatArray, color: Int, shape: Int, tex: Tex?, aaPixels: Float, flipX: Boolean = false, flipY: Boolean = false,
                   uv: FloatArray? = null, program: SpriteProgram? = null, param: Float = 1f) {
-        if (batchingOn && program == null) {
+        if (batchingOn && program == null && is2DAffine(modelM)) {
             batchQuad(modelM[0], modelM[1], modelM[4], modelM[5], modelM[12], modelM[13], color, shape, tex, aaPixels, uvRect(uv, flipX, flipY))
             return
         }

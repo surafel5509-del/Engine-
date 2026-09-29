@@ -46,6 +46,13 @@ jobs:
           # Rhino (JavaScript runtime)
           curl -sL --retry 3 -o out/rhino-1.7.13.jar https://github.com/mozilla/rhino/releases/download/Rhino1_7_13_Release/rhino-1.7.13.jar
           } 2>&1 | tee gather.log || true
+          # AGP mockable android jar = the exact unit-test runtime CI uses (methods return defaults)
+          {
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:createMockableJar || true
+          find app/build -name 'mockable*.jar' -exec cp {} out/ \; || true
+          ls -la out/mockable* 2>/dev/null || echo 'mockable jar unavailable'
+          } 2>&1 | tee mockable.log || true
           ls -la out | tee -a gather.log || true
           du -sh out/* | sort -h | tee -a gather.log || true
 

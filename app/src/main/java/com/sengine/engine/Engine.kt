@@ -252,6 +252,7 @@ class Engine(val project: Project, initialScene: Scene) {
         scene.rebuildIndex()
         val t1 = System.nanoTime()
         physics.maxSteps = maxPhysicsSteps
+        physics.broadphaseEnabled = quality.physicsBroadphase
         physics.step(scene, dt)
         physics3D.maxSteps = maxPhysicsSteps
         physics3D.step(scene, dt)
