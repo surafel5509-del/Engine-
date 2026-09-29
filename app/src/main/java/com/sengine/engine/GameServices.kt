@@ -63,8 +63,7 @@ class UISystem(private val engine: Engine) {
         val h = engine.gameView.heightPx.toFloat().coerceAtLeast(1f)
         val hw = Scene.uiHalfW
         hits.clear()
-        val objs = scene.objects.withIndex().filter { it.value.isActiveInHierarchy() && !it.value.destroyed }
-            .sortedWith(compareBy({ it.value.order }, { it.index })).map { it.value }
+        val objs = scene.drawList()
         for (go in objs) {
             val btn = go.get<UIButton>()?.takeIf { it.enabled }
             val panel = go.get<UIPanel>()?.takeIf { it.enabled && com.sengine.engine.render.GL.a(it.color) > 0.05f }
