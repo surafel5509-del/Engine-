@@ -51,6 +51,9 @@ class AudioSystem(private val project: Project) {
         }
     }
 
+    /** Active one-shot voices for the profiler. */
+    val activeStreams: Int get() = streams.size
+
     /** Master volumes (0..1) usable from scripts and game settings menus. */
     var sfxVolume = 1f
     var musicVolume = 1f

@@ -322,6 +322,35 @@ Yes — Import in Assets: PNG/JPG, WAV/OGG/MP3, OBJ.
 ## How do I back up a project?
 Projects screen → project menu → Export (zip). Import it on another device.
 """),
+        Topic("performance", "Performance & Profiling", "gauge", """
+# Performance
+S Engine automatically batches and culls your scene; these tools let you measure and tune.
+
+## Profiler overlay
+While playing, tap the profiler chip (top-right) to cycle: off → stats → graph. It shows FPS, frame time, draw calls, batches, quads, culled objects, physics bodies/contacts, particles and script counts, live.
+
+## Stats from scripts
+```js
+const s = scene.stats();
+log("fps=" + s.fps + " draws=" + s.drawCalls + " bodies=" + s.bodies);
+```
+
+## Quality switches
+```js
+setBatching(true);      // sprite batching (on by default)
+setCulling(true);       // off-screen culling
+setShadows(false);      // 3D shadows
+setParticleBudget(0.5); // fraction of max particles allowed (0..1)
+setSolverIterations(4); // 2D physics solver passes
+```
+
+## Rules of thumb
+- Keep batching on; shared textures batch together, per-object shaders break batches.
+- Prefer a few atlases over many small images.
+- Reduce shadow casters and particle counts on weak devices.
+- Static colliders cost far less than dynamic ones; use triggers sparingly.
+- Use Game Doctor's perf checks to find unbatched or culled-heavy setups.
+"""),
     )
 
     val recipes: List<com.sengine.project.ScriptRecipes.Recipe> get() = com.sengine.project.ScriptRecipes.all

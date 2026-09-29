@@ -1,4 +1,25 @@
-# S Engine — v6 Studio Edition #
+# S Engine — v7 Pro Performance Edition #
+
+**S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
+
+> Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
+
+## 🚀 v7 Pro Performance Edition
+
+A systems-level performance pass across the whole runtime — same features, far more of them per frame — plus a live profiler and quality controls.
+
+| Area | What changed |
+|---|---|
+| **Scene indexing** | Every frame, components are bucketed once into typed lists (renderers, cameras, lights, rigidbodies, colliders, scripts, emitters, UI…). Updates, physics, rendering and audio iterate flat arrays — no more per-object `instanceof`/`get<T>` scans. Transform propagation is a single sorted pass with per-frame stamping instead of a recursive walk, so deep hierarchies cost one traversal per frame regardless of how many systems ask |
+| **Sprite batching** | The 2D renderer is a real batched pipeline: one interleaved vertex buffer (position/UV/colour/shape-aux), one draw call per texture & blend state, up to 16 384 quads per batch with grow-on-demand, rounded-rect/AA/shape data packed into vertex attributes, 1×1 white texture so untextured quads join batches. Custom sprite shaders keep a compatibility path |
+| **2D physics broadphase** | The pair search runs through a spatial hash grid (auto-tuned cell size, big-body overflow list, pooled pairs), replacing the all-pairs O(n²) loop. Verified in tests: identical contacts vs. brute force, 4–20× fewer pair tests on crowded scenes, all bodies pooled |
+| **Pools everywhere** | Particles, transparent sort items, shadow casters, light refs and physics bodies come from object pools — steady-state play allocates almost nothing |
+| **EngineStats & QualitySettings** | The engine publishes a per-frame stats snapshot (frame ms, draw calls, batches, quads, culls, bodies, contacts, particles, scripts, heap, audio voices) and a quality profile (batching, culling, shadows, particle budget, physics broadphase, solver iterations, time scale). Scriptable and editable |
+| **Live profiler** | Play-mode overlay chip cycles off → text stats → scrolling frame-time graph. The editor console logs a per-second perf summary. Game Doctor gained perf checks (unbatchable renderers, heavy emitters, broadphase off) |
+| **3D pass** | Frustum-culled shadow casters, nearest-4 light selection, transparent list pooled, camera layers respected |
+| **Script API** | `scene.stats()`, `getFps()`, `setBatching/setCulling/setShadows/setParticleBudget/setSolverIterations/setTimeScale` (+ getters) |
+| **Verified** | 12 new JVM engine tests: broadphase↔brute-force parity over 90 simulated frames, pair-pruning ratio, draw-list ordering, `find` caching, hierarchy transforms, particle budget caps, engine stats, batching merge/legacy/3D-matrix paths, 3-second template plays error-free, and the stats/quality script API exercised through the real JS VM |
+
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 

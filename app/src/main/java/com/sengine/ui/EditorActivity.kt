@@ -97,9 +97,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             val mode = when (engine.mode) { Engine.Mode.EDIT -> "EDIT"; Engine.Mode.PLAY -> "▶ PLAYING"; Engine.Mode.PAUSED -> "⏸ PAUSED" }
             statsText.text = "$mode  •  ${engine.scene.name}  •  ${engine.fps.toInt()} FPS  •  $count objects" +
                 (if (state.mode3D) "  •  3D" else "") + (if (controller.snap) "  •  snap" else "") +
-                if (state.showProfiler) String.format("\nscripts %.2f ms  •  physics %.2f ms  •  render %.2f ms  •  %d draw calls  •  heap %d MB",
-                    engine.scriptMs, engine.physicsMs, engine.renderMs, engine.drawCalls,
-                    (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1048576) else ""
+                if (state.showProfiler) String.format(
+                    "\nscripts %.2f ms  •  physics %.2f ms  •  render %.2f ms  •  frame %.2f ms\n%d draw calls (%d batches / %d quads)  •  culled %d  •  %d objects\n%d particles  •  %d+%d bodies (%d+%d pairs)  •  %d scripts  •  heap %d MB",
+                    engine.scriptMs, engine.physicsMs, engine.renderMs, engine.stats.frameMs,
+                    engine.stats.drawCalls, engine.stats.renderBatches, engine.stats.quadsDrawn, engine.stats.culled2D + engine.stats.culled3D, engine.stats.objects,
+                    engine.stats.particles, engine.stats.bodies2D, engine.stats.bodies3D, engine.stats.pairs2D, engine.stats.pairs3D, engine.stats.scriptsRunning, engine.stats.heapMb) else ""
             handler.postDelayed(this, 200)
         }
     }
