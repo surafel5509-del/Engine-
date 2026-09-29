@@ -77,7 +77,8 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         synchronized(engine.lock) {
             engine.tick(dt)
             val t0 = System.nanoTime()
-            r.drawCalls = 0; r3.drawCalls = 0
+            r.drawCalls = 0; r3.drawCalls = 0; r.quadsDrawn = 0; r.batches = 0
+            r.batching = engine.quality.batching
             val time = engine.time.toFloat()
             r.time = time; r3.time = time
             r.resW = width.toFloat(); r.resH = height.toFloat(); r3.resW = r.resW; r3.resH = r.resH
@@ -94,14 +95,18 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 else engine.mainCamera()?.get<Camera2D>()?.let { fx = it.postFx; shader = it.postShader; intensity = it.postIntensity }
                 if (fx > 0) postProg = shaders.post(if (fx == POST_CUSTOM) 0 else fx, if (fx == POST_CUSTOM) shader else "")
             }
-            if (postProg != null) post.begin(width, height)
+            if (postProg != null) { r.flush(); post.begin(width, height) }
 
             if (use3D) render3D(editing, cam3) else render2D(editing)
             drawScreenUI(editing, use3D)
+            r.flush()
 
             if (post.active && postProg != null) r.drawCalls += post.end(postProg, time, intensity)
             engine.drawCalls = r.drawCalls + r3.drawCalls
             engine.renderMs = (System.nanoTime() - t0) / 1e6f
+            engine.stats.drawCalls = engine.drawCalls
+            engine.stats.renderBatches = r.batches
+            engine.stats.quadsDrawn = r.quadsDrawn
         }
     }
 
@@ -125,11 +130,17 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         r.begin(view)
         if (editing && editor!!.showGrid) drawGrid(view)
         val ppu = view.pixelsPerUnit
-        for (go in sortedObjects()) {
+        val objs = sortedObjects()
+        val cull = engine.quality.culling2D && !editing
+        var culled2D = 0
+        for (go in objs) {
             val ui = isScreenSpace(go)
             if (ui && !editing) continue
+            if (cull && outsideView(go, view)) { culled2D++; continue }
             drawObject2D(go, ppu, null)
         }
+        engine.culledObjects = culled2D
+        r.flush()
         if (editing) {
             if (engine.scene.objects.any { isScreenSpace(it) }) {
                 val hw = com.sengine.engine.core.Scene.uiHalfW
@@ -141,11 +152,8 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         }
     }
 
-    private fun sortedObjects(): List<GameObject> =
-        engine.scene.objects.withIndex()
-            .filter { it.value.isActiveInHierarchy() }
-            .sortedWith(compareBy({ it.value.order }, { it.index }))
-            .map { it.value }
+    /** Per-frame ordered object list, reused across frames (no per-frame allocation). */
+    private fun sortedObjects(): List<GameObject> = engine.scene.drawList()
 
     private fun isScreenSpace(go: GameObject): Boolean =
         go.get<SpriteRenderer>()?.screenSpace == true || go.get<TextRenderer>()?.screenSpace == true ||
@@ -187,6 +195,27 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             if (wa.mode == 0 && m3 == null) drawWater2D(go, wa, ppu)
             else if (wa.mode == 1 && m3 != null) drawWater3D(wa, m3)
         }
+    }
+
+    /**
+     * Conservative 2D viewport test: an object is culled when its textured quad (plus particle
+     * reach and a safety margin) is entirely outside the view rectangle.
+     */
+    private fun outsideView(go: GameObject, view: View2D): Boolean {
+        val w = go.world
+        var radius = 0f
+        go.get<SpriteRenderer>()?.let { radius = maxOf(radius, maxOf(abs(w.scaleX), abs(w.scaleY)) * 0.71f) }
+        go.get<TextRenderer>()?.let { tr -> if (tr.text.isNotEmpty()) radius = maxOf(radius, tr.size * 3f * maxOf(abs(w.scaleX), abs(w.scaleY))) }
+        go.getAny<ParticleEmitter>()?.let { pe ->
+            if (pe.emitting && pe.enabled) {
+                val reach = pe.speed * pe.lifetime + pe.startSize + pe.endSize
+                val s = maxOf(abs(w.scaleX), abs(w.scaleY), 0.01f)
+                radius = maxOf(radius, reach * s * 1.2f)
+            }
+        }
+        if (radius <= 0f) return false
+        return w.tx + radius < view.cx - view.halfW || w.tx - radius > view.cx + view.halfW ||
+            w.ty + radius < view.cy - view.size || w.ty - radius > view.cy + view.size
     }
 
     private fun drawWater2D(go: GameObject, wa: com.sengine.engine.core.Water, ppu: Float) {
@@ -239,7 +268,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     private fun drawParticles(pe: ParticleEmitter, ppu: Float, z: Float?) {
         if (pe.particles.isEmpty()) return
         val tex = if (pe.texture.isNotBlank()) textures.image(pe.texture) else null
-        if (pe.additive) GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE)
+        r.setBlend(pe.additive)
         for (p in pe.particles) {
             val t = (p.age / p.life).coerceIn(0f, 1f)
             val size = pe.startSize + (pe.endSize - pe.startSize) * t
@@ -250,7 +279,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 r.quadModel(m4, c, if (tex != null) 0 else 1, tex, 100f)
             } else r.rect(p.x, p.y, size, size, c, if (tex != null) 0 else 1, ppu, tex)
         }
-        if (pe.additive) GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        if (pe.additive) r.setBlend(false)
     }
 
     private fun lerpColor(a: Int, b: Int, t: Float): Int {
@@ -304,15 +333,20 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
 
     // ------------------------------------------------------------------ Screen-space UI
 
+    private val uiItems = ArrayList<GameObject>()
+
     private fun drawScreenUI(editing: Boolean, use3D: Boolean) {
         if (editing && !use3D) return // drawn in world space while editing 2D
-        val items = sortedObjects().filter { isScreenSpace(it) }
+        uiItems.clear()
+        for (go in sortedObjects()) if (isScreenSpace(go)) uiItems.add(go)
+        val items = uiItems
         if (items.isEmpty()) return
         uiView.cx = 0f; uiView.cy = 0f; uiView.size = 5f; uiView.widthPx = width; uiView.heightPx = height
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         r.begin(uiView)
         val ppu = uiView.pixelsPerUnit
         for (go in items) drawObject2D(go, ppu, null)
+        r.flush()
     }
 
     // ------------------------------------------------------------------ 3D
@@ -342,28 +376,28 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         r3.setSkyHorizon(settings?.skyHorizon ?: 0xFFBFD8F0.toInt())
         r3.setupLights(scene, v)
 
-        // gather opaque / transparent draw items
+        // gather opaque / transparent draw items (reused buffers — no per-frame allocation)
         itemCount = 0
         val objs = sortedObjects()
-        val transparent = ArrayList<Pair<Float, GameObject>>()
-        val casters = ArrayList<Pair<Mesh, FloatArray>>()
+        transparentItems.clear()
+        casters.clear()
         for (go in objs) {
             val mr = go.get<MeshRenderer>() ?: continue
-            if (GL.a(mr.color) < 0.999f) { transparent.add(v.distanceTo(go.world3[12], go.world3[13], go.world3[14]) to go); continue }
+            if (GL.a(mr.color) < 0.999f) { addTransparent(transparentItems, go, v.distanceTo(go.world3[12], go.world3[13], go.world3[14])); continue }
             val start = itemCount
             collectMesh(go, mr)
-            if (mr.castShadows) for (i in start until itemCount) casters.add(items[i].mesh!! to items[i].model)
+            if (mr.castShadows) for (i in start until itemCount) r3.addCaster(items[i].mesh!!, items[i].model)
         }
         val landStart = itemCount
         collectLandscapes(scene)
-        for (i in landStart until itemCount) casters.add(items[i].mesh!! to items[i].model)
+        for (i in landStart until itemCount) r3.addCaster(items[i].mesh!!, items[i].model)
         val voxelStart = itemCount
         collectVoxels(scene)
-        for (i in voxelStart until itemCount) casters.add(items[i].mesh!! to items[i].model)
+        for (i in voxelStart until itemCount) r3.addCaster(items[i].mesh!!, items[i].model)
 
-        val wantShadows = (settings?.shadows ?: true) && quality >= 1
-        if (wantShadows) r3.renderShadows(casters, quality, settings?.shadowDistance ?: 40f, width, height)
-        else r3.renderShadows(emptyList(), 0, 0f, width, height)
+        val wantShadows = engine.quality.shadows && (settings?.shadows ?: true) && quality >= 1
+        if (wantShadows) r3.renderShadows(quality, settings?.shadowDistance ?: 40f, width, height)
+        else r3.renderShadows(0, 0f, width, height)
 
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
@@ -385,10 +419,11 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
         for (go in objs) {
             if (go.get<MeshRenderer>() != null || isScreenSpace(go)) continue
             if (go.get<SpriteRenderer>() == null && go.get<TextRenderer>() == null && go.getAny<ParticleEmitter>() == null && go.get<com.sengine.engine.core.Water>() == null) continue
-            transparent.add(v.distanceTo(go.world3[12], go.world3[13], go.world3[14]) to go)
+            addTransparent(transparentItems, go, v.distanceTo(go.world3[12], go.world3[13], go.world3[14]))
         }
+        transparentItems.sortDescending()
         r.begin(v.viewProj)
-        for ((_, go) in transparent.sortedByDescending { it.first }) {
+        for (ti in transparentItems) { val go = ti.go
             val mr = go.get<MeshRenderer>()
             if (mr != null) {
                 val start = itemCount
@@ -397,10 +432,27 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             } else drawObject2D(go, 100f, go.world3)
         }
         GLES20.glDepthMask(true)
+        r.flush()
 
         if (editing) drawEditorOverlay3D(v, editor!!)
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
     }
+
+    /** Reusable (distance, object) transparent draw item. */
+    private class TransparentItem { var d = 0f; lateinit var go: GameObject }
+    private val transparentItems = ArrayList<TransparentItem>()
+    private val transparentPool = ArrayDeque<TransparentItem>()
+    private fun addTransparent(list: ArrayList<TransparentItem>, go: GameObject, dist: Float) {
+        val it = transparentPool.removeLastOrNull() ?: TransparentItem()
+        it.d = dist; it.go = go
+        list.add(it)
+    }
+    private fun ArrayList<TransparentItem>.sortDescending() {
+        sortByDescending { it.d }
+        for (i in indices) transparentPool.addLast(this[i])
+    }
+
+
 
     private class DrawItem { var mesh: Mesh? = null; val model = FloatArray(16); var mr: MeshRenderer? = null; var tex: Tex? = null; var prog: MeshProgram? = null; var color = 0; var ntex: Tex? = null }
     private val items = ArrayList<DrawItem>()

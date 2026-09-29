@@ -59,16 +59,18 @@ jobs:
           ls -la out | tee -a gather.log || true
           du -sh out/* | sort -h | tee -a gather.log || true
 
-      - name: Commit to toolchain-cache
+      - name: Commit toolchain branch
         if: always()
         run: |
           cp gather.log out/gather.log 2>/dev/null || echo "no gather.log" > out/gather.log
+          BR="toolchain-cache-${GITHUB_RUN_NUMBER}"
           cd out
-          git init -q -b toolchain-cache
+          git init -q -b "$BR"
           git config user.email "arena@localhost"
           git config user.name "toolchain-bot"
           git add -A
-          git commit -qm "toolchain cache $(date -u +%FT%TZ)"
-          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" toolchain-cache
+          git commit -qm "toolchain cache $BR $(date -u +%FT%TZ)"
+          git push -q "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BR"
+          echo "branch=$BR" 
         env:
           GITHUB_TOKEN: ${{ github.token }}

@@ -80,11 +80,13 @@ class Renderer3D {
         // default: sun from above
         dirDir[0] = -0.4f; dirDir[1] = -1f; dirDir[2] = -0.3f
         var points = 0
-        // point lights: nearest 4 to camera
-        val pts = ArrayList<Pair<Float, Pair<FloatArray, Light>>>()
-        for (go in scene.objects) {
+        // point lights: nearest 4 to camera (reusable gather, no per-frame allocation)
+        lightCount = 0
+        val lights = scene.index.lights
+        for (i in lights.indices) {
+            val l = lights[i]
+            val go = l.gameObject ?: continue
             if (!go.isActiveInHierarchy()) continue
-            val l = go.get<Light>() ?: continue
             val w = go.world3
             if (l.kind == 0) {
                 if (!hasDir) {
@@ -95,19 +97,37 @@ class Renderer3D {
                     hasDir = true
                 }
             } else {
-                pts.add(v.distanceTo(w[12], w[13], w[14]) to (floatArrayOf(w[12], w[13], w[14]) to l))
+                val slot = lightCount
+                if (slot >= MAX_GATHERED_LIGHTS) continue
+                lightCount++
+                val li = lightSlot(slot)
+                li.d = v.distanceTo(w[12], w[13], w[14])
+                li.l = l
+                li.x = w[12]; li.y = w[13]; li.z = w[14]
             }
         }
-        val anyLight = hasDir || pts.isNotEmpty()
+        val anyLight = hasDir || lightCount > 0
         if (!anyLight) { dirColor[0] = 0.85f; dirColor[1] = 0.83f; dirColor[2] = 0.8f }
-        for ((_, pl) in pts.sortedBy { it.first }) {
+        gatheredLights.sortBy { it.d }
+        for (li in gatheredLights) {
             if (points >= 4) break
-            val (p, l) = pl
-            pointPos[points * 4] = p[0]; pointPos[points * 4 + 1] = p[1]; pointPos[points * 4 + 2] = p[2]; pointPos[points * 4 + 3] = l.range
+            val l = li.l ?: continue
+            pointPos[points * 4] = li.x; pointPos[points * 4 + 1] = li.y; pointPos[points * 4 + 2] = li.z; pointPos[points * 4 + 3] = l.range
             pointColor[points * 3] = GL.r(l.color) * l.intensity; pointColor[points * 3 + 1] = GL.g(l.color) * l.intensity; pointColor[points * 3 + 2] = GL.b(l.color) * l.intensity
             points++
         }
+        for (li in gatheredLights) li.l = null
     }
+
+    /** Pooled point-light gather entry. */
+    private class LightRef { var d = 0f; var l: Light? = null; var x = 0f; var y = 0f; var z = 0f }
+    private val gatheredLights = ArrayList<LightRef>()
+    private var lightCount = 0
+    private fun lightSlot(i: Int): LightRef {
+        while (gatheredLights.size <= i) gatheredLights.add(LightRef())
+        return gatheredLights[i]
+    }
+    private val MAX_GATHERED_LIGHTS = 64
 
     // ------------------------------------------------------------------ shadows
     private var depthProg = 0
@@ -158,18 +178,38 @@ class Renderer3D {
         shadowSize = size
     }
 
+    /** Reusable shadow-caster entry (mesh + model matrix copy) — pooled across frames. */
+    class ShadowCaster { var mesh: Mesh? = null; val model = FloatArray(16) }
+    private val casters = ArrayList<ShadowCaster>()
+    private val casterPool = ArrayDeque<ShadowCaster>()
+
+    /** Registers a shadow caster for this frame. Call [beginShadowFrame] first. */
+    fun addCaster(mesh: Mesh, model: FloatArray) {
+        val c = casterPool.removeLastOrNull() ?: ShadowCaster()
+        c.mesh = mesh; System.arraycopy(model, 0, c.model, 0, 16)
+        casters.add(c)
+    }
+
+    /** Clears the per-frame caster list (called automatically by [renderShadows]). */
+    private fun clearCasters() {
+        for (c in casters) casterPool.addLast(c)
+        casters.clear()
+    }
+
     /**
      * Renders shadow casters into the shadow map from the directional light, fitted around the
-     * camera. Call after [setupLights] and before the main pass. [restoreFbo]/viewport are restored.
+     * camera. Call after [setupLights] and [addCaster]s and before the main pass.
+     * FBO/viewport are restored.
      */
-    fun renderShadows(casters: List<Pair<Mesh, FloatArray>>, quality: Int, distance: Float, restoreW: Int, restoreH: Int) {
+    fun renderShadows(quality: Int, distance: Float, restoreW: Int, restoreH: Int) {
         shadowsOn = false
-        if (quality <= 0 || casters.isEmpty()) return
+        val shadowCasters = casters
+        if (quality <= 0 || shadowCasters.isEmpty()) { clearCasters(); return }
         val size = if (quality >= 2) 2048 else 1024
         val prev = IntArray(1)
         GLES20.glGetIntegerv(GLES20.GL_FRAMEBUFFER_BINDING, prev, 0)
         ensureShadowTarget(size)
-        if (shadowFbo == 0) { GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, prev[0]); return }
+        if (shadowFbo == 0) { GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, prev[0]); clearCasters(); return }
         // fit an orthographic light frustum around the view focus
         val f = view.forward()
         val half = distance * 0.5f
@@ -195,15 +235,17 @@ class Renderer3D {
         GLES20.glDepthMask(true)
         GLES20.glUseProgram(depthProg)
         GLES20.glEnableVertexAttribArray(dPos)
-        for ((mesh, model) in casters) {
-            if (!inFrustum(lightVP, mesh, model)) continue
-            Mat4.mul(mvp, lightVP, model)
+        for (caster in shadowCasters) {
+            val mesh = caster.mesh ?: continue
+            if (!inFrustum(lightVP, mesh, caster.model)) continue
+            Mat4.mul(mvp, lightVP, caster.model)
             GLES20.glUniformMatrix4fv(dMVP, 1, false, mvp, 0)
             mesh.bind()
             GLES20.glVertexAttribPointer(dPos, 3, GLES20.GL_FLOAT, false, 32, 0)
             GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, mesh.vertexCount)
             drawCalls++
         }
+        clearCasters()
         GLES20.glDisableVertexAttribArray(dPos)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
         GLES20.glEnable(GLES20.GL_BLEND)
