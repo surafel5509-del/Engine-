@@ -227,15 +227,15 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
         // ---- Unity-style menu bar (File / Edit / GameObject / Component / Assets / Tools / Help)
         val menuBar = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(5), 0, dp(5), 0) }
-        fun menuBtn(name: String, items: List<Pair<String, () -> Unit>>) {
+        fun menuBtn(name: String, items: List<Pair<String, (View) -> Unit>>) {
             menuBar.addView(label(name, 11f, C.DIM, true).apply {
                 setPadding(dp(5), dp(6), dp(5), dp(6))
                 setOnClickListener { v ->
-                    if (items.size == 1) { items[0].second(); return@setOnClickListener }
+                    if (items.size == 1) { items[0].second(v); return@setOnClickListener }
                     val pm = PopupMenu(this@EditorActivity, v)
                     items.forEach { pm.menu.add(it.first) }
                     pm.setOnMenuItemClickListener { m ->
-                        items.firstOrNull { it.first == m.title.toString() }?.let { it.second() }
+                        items.firstOrNull { it.first == m.title.toString() }?.let { it.second(v) }
                         true
                     }
                     pm.show()
