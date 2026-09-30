@@ -606,7 +606,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 "Save as Prefab…" -> {
                     synchronized(engine.lock) {
                         val json = com.sengine.project.PrefabIO.capture(engine.scene, go)
-                        val file = com.sengine.project.PrefabIO.save(project, go.name.replace(Regex("[^A-Za-z0-9_\- ]"), "").ifBlank { "Prefab" }, json)
+                        val file = com.sengine.project.PrefabIO.save(project, go.name.replace(Regex("[^A-Za-z0-9_ -]"), "").ifBlank { "Prefab" }, json)
                         toast("Saved prefab $file")
                     }
                     refreshAssets()
@@ -824,6 +824,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             AssetKind.SOUND -> { pm.menu.add("Preview"); if (sel != null) pm.menu.add("Add AudioSource to ${sel.name}") }
             AssetKind.SHADER -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Use shader on ${sel.name}") }
             AssetKind.ANIMATION -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Play on ${sel.name}") }
+            AssetKind.PREFAB -> { pm.menu.add("Instantiate to scene"); pm.menu.add("Share as .prefab") }
             AssetKind.MODEL -> { if (name.endsWith(".smodel")) pm.menu.add("Edit"); pm.menu.add("Create 3D Model Object"); if (sel != null) pm.menu.add("Use model on ${sel.name}") }
             AssetKind.SONG -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Add AudioSource to ${sel.name}") }
             AssetKind.DATA -> pm.menu.add("Edit")

@@ -34,11 +34,13 @@ object PrefabIO {
         return file
     }
 
-    fun load(project: Project, file: String): JSONObject? = try {
-        val t = project.readAsset(file) ?: return null
-        val o = JSONObject(t)
-        if (o.optString("format") != FORMAT) null else o
-    } catch (_: Exception) { null }
+    fun load(project: Project, file: String): JSONObject? {
+        return try {
+            val t = project.readAsset(file) ?: return null
+            val o = JSONObject(t)
+            if (o.optString("format") != FORMAT) null else o
+        } catch (_: Exception) { null }
+    }
 
     fun listPrefabs(project: Project): List<String> =
         project.listAssets().filter { it.endsWith(".prefab") }
