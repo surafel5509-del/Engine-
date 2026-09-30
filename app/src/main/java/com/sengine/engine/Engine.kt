@@ -2,8 +2,14 @@ package com.sengine.engine
 
 import com.sengine.engine.core.AudioSource
 import com.sengine.engine.core.Camera2D
+import com.sengine.engine.core.CharacterController3D
+import com.sengine.engine.core.Ragdoll
+import com.sengine.engine.core.Collider3D
 import com.sengine.engine.core.Component
 import com.sengine.engine.core.GameObject
+import com.sengine.engine.core.Joint3D
+import com.sengine.engine.core.MeshRenderer
+import com.sengine.engine.core.Rigidbody3D
 import com.sengine.engine.core.ParticleEmitter
 import com.sengine.engine.core.Scene
 import com.sengine.engine.core.SceneSerializer
@@ -15,6 +21,8 @@ import org.json.JSONObject
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -143,6 +151,11 @@ class Engine(val project: Project, initialScene: Scene) {
             go.get<AudioSource>()?.let { if (it.playOnStart) audio.play(it.clip, it.volume, it.loop) }
         }
         scripts.begin()
+        if (mode == Mode.PLAY) for (go in scene.objects.toList()) {
+            if (!go.isActiveInHierarchy()) continue
+            val rd = go.getAny<Ragdoll>() ?: continue
+            if (rd.enabled && rd.trigger == 1) spawnRagdoll(go)
+        }
     }
 
     private fun endScene() {
@@ -188,6 +201,7 @@ class Engine(val project: Project, initialScene: Scene) {
         ui.process()
         input.beginFrame(gameView)
         val t0 = System.nanoTime()
+        updateCharacterControllers(dt)
         scripts.update(dt)
         val t1 = System.nanoTime()
         physics.step(scene, dt)
@@ -195,6 +209,7 @@ class Engine(val project: Project, initialScene: Scene) {
         val t2 = System.nanoTime()
         scriptMs = scriptMs * 0.9f + (t1 - t0) / 1e6f * 0.1f
         physicsMs = physicsMs * 0.9f + (t2 - t1) / 1e6f * 0.1f
+        tickRagdolls(dt)
         cleanupDestroyed()
         scene.updateTransforms()
         updateCameraFollow(dt)
@@ -218,6 +233,114 @@ class Engine(val project: Project, initialScene: Scene) {
                 beginScene()
                 log(0, "Loaded scene $load")
             } else log(2, "Scene not found: $load")
+        }
+    }
+
+    // ---------------------------------------------------------------- v7: character controllers & ragdolls
+    private fun updateCharacterControllers(dt: Float) {
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val cc = go.get<CharacterController3D>() ?: continue
+            val rb = go.get<Rigidbody3D>() ?: continue
+            val mx = input.axisX; val my = input.axisY
+            val mag = min(1f, kotlin.math.sqrt(mx * mx + my * my))
+            cc.moving = mag > 0.05f
+            val k = (if (rb.grounded) 0.35f else cc.airControl * 0.12f).coerceAtMost(1f)
+            val tx = mx * cc.speed; val tz = -my * cc.speed
+            rb.vx += (tx - rb.vx) * k
+            rb.vz += (tz - rb.vz) * k
+            if (input.aDown && rb.grounded) { rb.vy = cc.jump; rb.grounded = false }
+            if (cc.rotateToMove && cc.moving) go.rotY = Math.toDegrees(kotlin.math.atan2(mx.toDouble(), (-my).toDouble())).toFloat()
+            cc.grounded = rb.grounded
+            physics3D.wake(rb)
+        }
+    }
+
+    private class RagdollPiece(val pieces: MutableList<GameObject>, var life: Float)
+    private val ragdollTimers = ArrayList<RagdollPiece>()
+
+    /**
+     * Turns a rigged model object into a jointed physics ragdoll: one dynamic body per rig part
+     * (world-baked single-part models), fixed joints up the skeleton and an initial impulse.
+     */
+    fun spawnRagdoll(go: GameObject, impulse: Float? = null) {
+        if (go.destroyed || !go.active) return
+        val rd = go.getAny<Ragdoll>()
+        val strength = impulse ?: rd?.strength ?: 5f
+        val upBias = rd?.upBias ?: 0.6f
+        val mr = go.getAny<MeshRenderer>()
+        val modelName = mr?.model ?: ""
+        val model = if (modelName.endsWith(".smodel")) try { com.sengine.engine.model.SModel.parse(project.readAsset(modelName) ?: "") } catch (_: Exception) { null } else null
+        val pieces = ArrayList<GameObject>()
+        val world = go.computeWorld3()
+        if (model != null && model.parts.isNotEmpty() && (rd?.useModelRig != false && (model.rig.isNotEmpty() || model.parts.size > 1))) {
+            val clip = model.clip(mr?.playingAnim?.ifBlank { mr?.animation ?: "" } ?: "")
+            val mats = Array(model.parts.size) { FloatArray(16) }
+            model.matrices(clip, mr?.animTime ?: 0f, mats)
+            for ((i, part) in model.parts.withIndex()) {
+                if (!part.visible || part.faces.isEmpty()) continue
+                // bake the part's current world-space geometry into a single-part model
+                val baked = com.sengine.engine.model.SPart(part.name)
+                baked.color = part.color; baked.smooth = part.smooth
+                for (v in part.verts) baked.verts.add(Mat4Point(world, mats[i], v))
+                for ((fi, f) in part.faces.withIndex()) {
+                    if (f.size < 3 || f.any { it !in part.verts.indices }) continue
+                    baked.faces.add(f.copyOf()); baked.faceColors.add(part.faceColors[fi]); baked.groups.add(0); baked.uvs.add(part.uvs[fi]?.copyOf())
+                }
+                baked.fixColors()
+                val asset = "_ragdoll_${go.id}_$i.smodel"
+                project.writeAsset(asset, com.sengine.engine.model.SModel(mutableListOf(baked)).toJson().toString())
+                val piece = scene.create("${go.name}.${part.name}")
+                piece.tag = go.tag
+                piece.add(MeshRenderer().also { it.mesh = MeshRenderer.MESHES.size - 1; it.model = asset; it.texture = part.texture; it.color = part.color })
+                // box collider from the baked bounds
+                var mnx = Float.MAX_VALUE; var mny = Float.MAX_VALUE; var mnz = Float.MAX_VALUE; var mxx = -mnx; var mxy = -mny; var mxz = -mnz
+                for (v in baked.verts) { mnx = min(mnx, v[0]); mny = min(mny, v[1]); mnz = min(mnz, v[2]); mxx = max(mxx, v[0]); mxy = max(mxy, v[1]); mxz = max(mxz, v[2]) }
+                piece.x = (mnx + mxx) / 2; piece.y = (mny + mxy) / 2; piece.z = (mnz + mxz) / 2
+                piece.add(Collider3D().also { it.sizeX = max(0.05f, mxx - mnx); it.sizeY = max(0.05f, mxy - mny); it.sizeZ = max(0.05f, mxz - mnz) })
+                piece.add(Rigidbody3D().also { it.friction = 0.6f })
+                val pj = model.parts.getOrNull(part.parent)
+                piece.add(Joint3D().also { j -> j.kind = 0; j.target = if (pj != null && pj.visible) "${go.name}.${pj.name}" else ""; j.breakForce = 0f })
+                // impulse: mostly up + a little sideways, like a knock-back
+                val a = kotlin.random.Random.nextFloat() * 6.2832f
+                piece.get<Rigidbody3D>()!!.also {
+                    it.vx = kotlin.math.cos(a) * strength * (1f - upBias) * 0.5f
+                    it.vy = strength * upBias + 1f
+                    it.vz = kotlin.math.sin(a) * strength * (1f - upBias) * 0.5f
+                }
+                pieces.add(piece)
+            }
+            if (pieces.isNotEmpty()) {
+                go.active = false
+                val life = rd?.lifetime ?: 0f
+                if (life > 0f) ragdollTimers.add(RagdollPiece(pieces, life))
+                log(0, "Ragdoll: ${pieces.size} parts from ${go.name}")
+                return
+            }
+        }
+        // fallback: no model rig — knock the whole object over with physics
+        if (go.get<Rigidbody3D>() == null) go.add(Rigidbody3D())
+        if (go.get<Collider3D>() == null) go.add(Collider3D())
+        go.get<Rigidbody3D>()!!.also {
+            it.vx += kotlin.random.Random.nextFloat() * strength - strength / 2
+            it.vy += strength * upBias
+            it.vz += kotlin.random.Random.nextFloat() * strength - strength / 2
+        }
+        physics3D.wake(go.get<Rigidbody3D>()!!)
+    }
+
+    private fun Mat4Point(world: FloatArray, part: FloatArray, v: FloatArray): FloatArray {
+        val local = com.sengine.engine.math.Mat4.point(part, v[0], v[1], v[2])
+        return com.sengine.engine.math.Mat4.point(world, local[0], local[1], local[2])
+    }
+
+    private fun tickRagdolls(dt: Float) {
+        if (ragdollTimers.isEmpty()) return
+        val it = ragdollTimers.iterator()
+        while (it.hasNext()) {
+            val e = it.next()
+            e.life -= dt
+            if (e.life <= 0f) { for (p in e.pieces) p.destroyed = true; it.remove() }
         }
     }
 

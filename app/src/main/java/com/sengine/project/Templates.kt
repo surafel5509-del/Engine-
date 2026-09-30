@@ -19,7 +19,7 @@ import com.sengine.engine.core.TextRenderer
 object Templates {
     class Template(val name: String, val description: String, val build: (Project) -> Unit)
 
-    val all: List<Template> by lazy { listOf(empty, platformer, shooter, physics, demo3d, animated, blueprintDemo) + com.sengine.project.games.Games.templates +
+    val all: List<Template> by lazy { listOf(empty, empty3d, platformer, shooter, physics, demo3d, animated, blueprintDemo) + com.sengine.project.games.Games.templates +
         listOf(Template("Native World (C++ Open World)", "Unreal-style open world written in native C++ scripts: eroded C++ Landscape island, lake, scattered forest, crystals to collect, third-person player and HUD.") { com.sengine.project.games.NativeWorldGame.build(it) }) }
 
     const val NEW_SHADER = """// S Engine effect shader (GLSL ES)
@@ -501,6 +501,21 @@ function onTrigger(other) {
         pl.tag = "Player"
         for (i in 0 until 5) obj(s, "Gem", -6f + i * 3f, 0.5f, 0.5f, 0.5f).sprite(0xFFFFD54F, 2).circleCol(true).script("CollectibleBP.bp").also { it.order = 5 }
         obj(s, "Spinner", -8f, 1f, 1f, 1f).sprite(0xFFEC407A).script("RotatorBP.bp")
+        p.saveScene(s)
+        p.startScene = "Main"
+    }
+
+    // ---------------------------------------------------------------- empty 3D
+    private val empty3d = Template("Empty 3D", "A 3D camera, light, ground plane and a cube. Start from scratch in 3D.") { p ->
+        val s = Scene("Main")
+        val cam = obj3(s, "Main Camera", 0f, 4f, 9f).also { it.rotX = -22f }
+        cam.add(Camera3D().also { c -> c.fov = 60f; c.skyTop = 0xFF3B7BD4.toInt(); c.skyHorizon = 0xFFBFD8F0.toInt(); c.quality = 2 })
+        val sun = obj3(s, "Sun", 0f, 10f, 4f)
+        sun.add(Light().also { l -> l.kind = 0; l.intensity = 1.1f })
+        obj3(s, "Ground", 0f, -0.5f, 0f, 30f, 1f, 30f).mesh(0, 0xFF5A8F4A, "Grass.png", 10f).col3()
+        obj3(s, "Cube", 0f, 0.5f, 0f).mesh(0, 0xFF4FC3F7).script("Rotator.js", "x=0, y=40, z=0")
+        p.writeAsset("Rotator.js", AssetLibrary.Scripts.all.first { it.first == "Rotator.js" }.third)
+        p.writeAsset("NewBehaviour.js", NEW_SCRIPT)
         p.saveScene(s)
         p.startScene = "Main"
     }

@@ -61,7 +61,7 @@ class EngineAgentTest {
     @Test
     fun referencesAreGenerated() {
         val prompt = com.sengine.agent.AgentPrompt.system()
-        assertTrue(prompt.contains("SpriteRenderer")); assertTrue(prompt.contains("play_test")); assertTrue(prompt.contains("Sky Strike"))
+        assertTrue(prompt.contains("SpriteRenderer")); assertTrue(prompt.contains("play_test")); assertTrue(prompt.contains("Crystal Caverns"))
         println("SIM agent system prompt ${prompt.length} chars, ${AgentTools.TOOLS.size} tools")
     }
 

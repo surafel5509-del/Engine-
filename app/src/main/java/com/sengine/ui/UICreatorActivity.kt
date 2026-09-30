@@ -63,7 +63,7 @@ class UICreatorActivity : AppCompatActivity() {
         val body = hbox()
         val left = vbox().apply { setPadding(dp(8), dp(8), dp(8), dp(8)) }
         left.addView(sectionHeader("plus", "Add"))
-        for ((ic, t) in listOf("frame" to "Panel", "cursor" to "Button", "text" to "Text", "chart" to "Progress bar", "image" to "Image")) {
+        for ((ic, t) in listOf("frame" to "Panel", "cursor" to "Button", "text" to "Text", "chart" to "Progress bar", "sliders" to "Slider", "check" to "Toggle", "target" to "Radar", "image" to "Image")) {
             left.addView(iconTextButton(ic, t, C.PANEL2) { add(t) }, lp(MATCH, WRAP).margins(0, dp(2), 0, dp(2)))
         }
         left.addView(sectionHeader("layers", "Layers"), lp(MATCH, WRAP).margins(0, dp(10), 0, dp(4)))
@@ -87,7 +87,7 @@ class UICreatorActivity : AppCompatActivity() {
             .setNegativeButton("Discard") { _, _ -> finish() }.setNeutralButton("Cancel", null).show()
     }
 
-    private fun isUi(go: GameObject) = go.components.any { it is UIPanel || it is UIButton || it is UIProgress } ||
+    private fun isUi(go: GameObject) = go.components.any { it is UIPanel || it is UIButton || it is UIProgress || it is UISlider || it is UIToggle || it is UIRadar } ||
         go.getAny<TextRenderer>()?.screenSpace == true || go.getAny<SpriteRenderer>()?.screenSpace == true
 
     private fun uiObjects() = scene.objects.filter { isUi(it) && !it.destroyed }
@@ -101,7 +101,7 @@ class UICreatorActivity : AppCompatActivity() {
                 background = round(if (go === selected) C.SEL else C.PANEL2, dp(6).toFloat())
                 setOnClickListener { select(go) }
             }
-            val kind = when { go.getAny<UIButton>() != null -> "cursor"; go.getAny<UIPanel>() != null -> "frame"; go.getAny<UIProgress>() != null -> "chart"; go.getAny<TextRenderer>() != null -> "text"; else -> "image" }
+            val kind = when { go.getAny<UIButton>() != null -> "cursor"; go.getAny<UIPanel>() != null -> "frame"; go.getAny<UIProgress>() != null -> "chart"; go.getAny<UISlider>() != null -> "sliders"; go.getAny<UIToggle>() != null -> "check"; go.getAny<UIRadar>() != null -> "target"; go.getAny<TextRenderer>() != null -> "text"; else -> "image" }
             row.addView(android.widget.ImageView(this).apply { setImageDrawable(Icons.drawable(this@UICreatorActivity, kind, C.DIM, 14)) }, lp(dp(18), dp(18)))
             val depth = generateSequence(go.parent) { it.parent }.count()
             row.addView(label("  ".repeat(depth) + go.name, 12f, if (go.active) C.TEXT else C.DIM), lp(0, WRAP, 1f).margins(dp(4), 0, 0, 0))
@@ -150,6 +150,9 @@ class UICreatorActivity : AppCompatActivity() {
             "Button" -> go.add(UIButton()).also { it.text = "Button"; it.width = 3.2f; it.height = 0.9f; it.color = 0xFFFFFFFF.toInt(); it.textColor = 0xFF000000.toInt(); it.corner = 0.25f }
             "Text" -> go.add(TextRenderer()).also { it.text = "Text"; it.size = 0.5f; it.screenSpace = true; it.bold = true }
             "Progress bar" -> go.add(UIProgress()).also { it.width = 4f; it.height = 0.35f; it.value = 0.7f }
+            "Slider" -> go.add(com.sengine.engine.core.UISlider()).also { it.width = 4f; it.value = 0.7f }
+            "Toggle" -> go.add(com.sengine.engine.core.UIToggle()).also { it.checked = true }
+            "Radar" -> go.add(com.sengine.engine.core.UIRadar()).also { it.size = 2.2f }
             else -> { go.add(SpriteRenderer()).also { it.screenSpace = true }; go.scaleX = 1.5f; go.scaleY = 1.5f }
         }
         dirty = true; select(go)
@@ -176,6 +179,9 @@ class UICreatorActivity : AppCompatActivity() {
         val sx = w.scaleX; val sy = w.scaleY
         val (bw, bh) = go.getAny<UIButton>()?.let { it.width to it.height } ?: go.getAny<UIPanel>()?.let { it.width to it.height }
             ?: go.getAny<UIProgress>()?.let { it.width to it.height }
+            ?: go.getAny<UISlider>()?.let { it.width to it.height }
+            ?: go.getAny<UIToggle>()?.let { it.width to it.width }
+            ?: go.getAny<UIRadar>()?.let { it.size to it.size }
             ?: go.getAny<TextRenderer>()?.let { t -> (t.text.lines().maxOfOrNull { it.length } ?: 1) * t.size * 0.55f to t.text.lines().size * t.size * 1.2f }
             ?: (1f to 1f)
         return floatArrayOf(w.tx, w.ty, bw * sx, bh * sy)

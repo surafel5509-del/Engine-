@@ -49,7 +49,7 @@ object AssetPacksV3 {
         l += tex("Marble", "Marble.png", "White marble veins, 128×128", "Textures") { marble() }
         l += tex("Camo", "Camo.png", "Military camouflage, 128×128", "Textures") { camo() }
         l += tex("Zombie Ground", "DeadGround.png", "Dark cracked earth for the zombie arena, 128×128", "Textures") { deadGround() }
-        l += tex("Voxel Atlas Preview", "BlocksPreview.png", "All MiniCraft block tiles (4×4 atlas), 64×64", "Textures") { blocksPreview() }
+        l += tex("Voxel Atlas Preview", "BlocksPreview.png", "All block tiles (4×4 atlas), 64×64", "Textures") { blocksPreview() }
         // ------------------------------------------------------------ top-down sprites
         l += tex("Soldier (top-down)", "Soldier.png", "Player soldier seen from above, 64×64", "Sprites") { soldier(0xFF2E7D32.toInt()) }
         l += tex("Zombie (top-down)", "Zombie.png", "Green shambling zombie, 64×64", "Sprites") { zombie(0xFF7CB342.toInt()) }
@@ -136,7 +136,7 @@ object AssetPacksV3 {
                 listOf("Zombie (top-down)", "Zombie Brute", "Soldier (top-down)", "Zombie Ground", "Blood Splat", "Health Kit", "Ammo Box", "Shotgun Pickup", "Crosshair", "Pistol Shot", "Shotgun Blast", "Reload", "Empty Click", "Zombie Groan", "Spooky Night (song)")),
             pack("Racing Pack", "Car model, asphalt/road/curb/desert/grass textures, engine loop, screech, countdown and racing music",
                 listOf("Low-poly Car (editable)", "Asphalt", "Road (lane lines)", "Race Curb", "Desert Sand", "Grass Field", "Car Engine Loop", "Tire Screech", "Countdown Beep", "Race Start", "Nitro Whoosh", "Racing Rush (song)")),
-            pack("MiniCraft Pack", "Block atlas preview, break/place/step sounds, block world music and a tree model",
+            pack("Block World Pack", "Block atlas preview, break/place/step sounds, block world music and a tree model",
                 listOf("Voxel Atlas Preview", "Block Break", "Block Place", "Footstep", "Block World (song)", "Tree (editable)")),
             pack("UI Kit Pack", "Panels, buttons, bar frame, icons, banner and the default click sound",
                 listOf("UI Panel (dark)", "UI Button (blue)", "UI Button (green)", "UI Button (red)", "Health Bar Frame", "Joystick Base", "Heart Icon", "Coin Icon", "Title Banner", "Star", "UI Click (default)", "Menu Select")),

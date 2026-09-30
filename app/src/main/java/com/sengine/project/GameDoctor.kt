@@ -11,6 +11,9 @@ import com.sengine.engine.core.Rigidbody3D
 import com.sengine.engine.core.UIButton
 import com.sengine.engine.core.UIPanel
 import com.sengine.engine.core.UIProgress
+import com.sengine.engine.core.UIRadar
+import com.sengine.engine.core.UISlider
+import com.sengine.engine.core.UIToggle
 import java.io.File
 
 /**
@@ -69,7 +72,10 @@ object GameDoctor {
             totalObjects += scene.objects.size
             val hasCam2 = scene.objects.any { it.getAny<Camera2D>() != null }
             val hasCam3 = scene.objects.any { it.getAny<Camera3D>() != null }
-            val hasUI = scene.objects.any { it.getAny<UIButton>() != null || it.getAny<UIPanel>() != null || it.getAny<UIProgress>() != null }
+            val hasUI = scene.objects.any {
+                it.getAny<UIButton>() != null || it.getAny<UIPanel>() != null || it.getAny<UIProgress>() != null ||
+                    it.getAny<UISlider>() != null || it.getAny<UIToggle>() != null || it.getAny<UIRadar>() != null
+            }
             if (!hasCam2 && !hasCam3) {
                 out += Issue(if (hasUI) 0 else 1, "Scene '$name' has no camera",
                     if (hasUI) "Only UI will be visible (fine for menus)." else "Nothing in the world will be rendered.", name, "Add camera") {

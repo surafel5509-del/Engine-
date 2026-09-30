@@ -3,6 +3,7 @@ package com.sengine.ui
 import android.annotation.SuppressLint
 import android.content.pm.ActivityInfo
 import android.opengl.GLSurfaceView
+import android.animation.ValueAnimator
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -101,7 +102,10 @@ class PlayerActivity : AppCompatActivity() {
 
     private var fullscreen = true
 
-    /** Branded splash overlay for exported games (icon, title, "Made with S Engine"), fades out. */
+    /**
+     * Unity-style splash for exported games: S Engine mark scales in, the game title appears,
+     * a loading bar fills, then everything fades into the game. Tap to skip.
+     */
     private fun addSplash(root: FrameLayout, opts: org.json.JSONObject) {
         val splash = vbox().apply {
             gravity = Gravity.CENTER
@@ -111,14 +115,51 @@ class PlayerActivity : AppCompatActivity() {
         }
         val icon = android.widget.ImageView(this).apply {
             try { setImageResource(com.sengine.R.mipmap.ic_game) } catch (_: Throwable) {}
+            alpha = 0f
+            scaleX = 0.55f; scaleY = 0.55f
         }
-        splash.addView(icon, android.widget.LinearLayout.LayoutParams(dp(110), dp(110)))
-        splash.addView(label(opts.optString("name", "Game"), 26f, C.TEXT, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(4)) })
+        splash.addView(icon, android.widget.LinearLayout.LayoutParams(dp(104), dp(104)))
+        splash.addView(label(opts.optString("name", "Game"), 25f, C.TEXT, true).apply {
+            gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(2)); alpha = 0f
+        })
         val sub = opts.optString("splashText", "").ifBlank { "Made with S Engine" }
-        splash.addView(label(sub, 13f, C.DIM).apply { gravity = Gravity.CENTER })
+        splash.addView(label(sub, 12f, C.DIM).apply {
+            gravity = Gravity.CENTER; letterSpacing = 0.14f; alpha = 0f
+        })
+        // animated loading bar
+        val barBack = android.widget.LinearLayout(this).apply {
+            background = round(0x22FFFFFF, dp(6).toFloat())
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
+        val barFill = TextView(this).apply { background = gradient(0xFF4C8DFF.toInt(), 0xFF7C4DFF.toInt(), dp(5).toFloat()) }
+        barBack.addView(barFill, android.widget.LinearLayout.LayoutParams(dp(2), dp(7)))
+        val barHolder = android.widget.LinearLayout(this).apply { gravity = Gravity.CENTER; setPadding(0, dp(26), 0, 0) }
+        barHolder.addView(barBack, android.widget.LinearLayout.LayoutParams(dp(170), dp(11)))
+        splash.addView(barHolder)
+        splash.addView(label("tap to start", 9f, 0xFF6B7280.toInt()).apply {
+            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0); alpha = 0.55f
+        })
         root.addView(splash, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        val ms = (opts.optDouble("splashSeconds", 1.8) * 1000).toLong().coerceIn(300, 8000)
-        handler.postDelayed({ splash.animate().alpha(0f).setDuration(450).withEndAction { root.removeView(splash) }.start() }, ms)
+
+        icon.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(480).setInterpolator(android.view.animation.AccelerateDecelerateInterpolator()).start()
+        splash.getChildAt(1).animate().alpha(1f).setStartDelay(160).setDuration(380).start()
+        splash.getChildAt(2).animate().alpha(1f).setStartDelay(280).setDuration(300).start()
+        val total = (opts.optDouble("splashSeconds", 1.8) * 1000).toLong().coerceIn(300, 8000)
+        val fill = ValueAnimator.ofInt(dp(2), dp(168))
+        fill.duration = (total * 0.85f).toLong().coerceAtLeast(200)
+        fill.startDelay = 250
+        fill.addUpdateListener { v -> barFill.layoutParams.width = v.animatedValue as Int; barFill.requestLayout() }
+        fill.start()
+        var done = false
+        fun dismiss() {
+            if (done) return
+            done = true
+            fill.cancel()
+            splash.animate().alpha(0f).setDuration(420).withEndAction { root.removeView(splash) }.start()
+        }
+        splash.setOnClickListener { dismiss() }
+        handler.postDelayed({ dismiss() }, total)
     }
 
     private fun hideSystemUi() {

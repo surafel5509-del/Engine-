@@ -22,15 +22,23 @@ object ComponentRegistry {
         "VoxelWorld" to { VoxelWorld() },
         "Water" to { Water() },
         "Landscape" to { Landscape() },
+        "CharacterController3D" to { CharacterController3D() },
+        "Joint3D" to { Joint3D() },
+        "Ragdoll" to { Ragdoll() },
+        "DistanceJoint2D" to { DistanceJoint2D() },
+        "RevoluteJoint2D" to { RevoluteJoint2D() },
+        "UISlider" to { UISlider() },
+        "UIToggle" to { UIToggle() },
+        "UIRadar" to { UIRadar() },
     )
 
     val categories: LinkedHashMap<String, List<String>> = linkedMapOf(
         "Rendering 2D" to listOf("SpriteRenderer", "TextRenderer", "Animator", "ParticleEmitter", "Camera"),
         "Rendering 3D" to listOf("MeshRenderer", "Camera3D", "Light"),
-        "Physics 2D" to listOf("Rigidbody2D", "Collider2D", "Water"),
-        "Physics 3D" to listOf("Rigidbody3D", "Collider3D"),
+        "Physics 2D" to listOf("Rigidbody2D", "Collider2D", "Water", "DistanceJoint2D", "RevoluteJoint2D"),
+        "Physics 3D" to listOf("Rigidbody3D", "Collider3D", "CharacterController3D", "Joint3D", "Ragdoll"),
         "Scripting & Audio" to listOf("Script", "AudioSource"),
-        "Game UI" to listOf("UIPanel", "UIButton", "UIProgress", "TextRenderer"),
+        "Game UI" to listOf("UIPanel", "UIButton", "UIProgress", "UISlider", "UIToggle", "UIRadar", "TextRenderer"),
         "World" to listOf("Landscape", "VoxelWorld", "Water"),
     )
 
@@ -165,6 +173,8 @@ class Collider2D : Component() {
     var offsetX = 0f
     var offsetY = 0f
     var isTrigger = false
+    /** v7 one-way platform: solid only from the top (jump through from below). */
+    var oneWay = false
 
     override fun props() = listOf(
         Prop.Choice("Shape", listOf("Box", "Circle"), { shape }, { shape = it }),
@@ -174,6 +184,7 @@ class Collider2D : Component() {
         Prop.F("Offset X", { offsetX }, { offsetX = it }),
         Prop.F("Offset Y", { offsetY }, { offsetY = it }),
         Prop.B("Is Trigger", { isTrigger }, { isTrigger = it }),
+        Prop.B("One Way", { oneWay }, { oneWay = it }),
     )
 }
 
@@ -464,7 +475,7 @@ class Rigidbody3D : Component() {
 
 class Collider3D : Component() {
     override val type = "Collider3D"
-    var shape = 0 // 0 Box, 1 Sphere
+    var shape = 0 // 0 Box, 1 Sphere, 2 Capsule (v7)
     var sizeX = 1f
     var sizeY = 1f
     var sizeZ = 1f
@@ -475,7 +486,7 @@ class Collider3D : Component() {
     var isTrigger = false
 
     override fun props() = listOf(
-        Prop.Choice("Shape", listOf("Box", "Sphere"), { shape }, { shape = it }),
+        Prop.Choice("Shape", listOf("Box", "Sphere", "Capsule"), { shape }, { shape = it }),
         Prop.F("Size X", { sizeX }, { sizeX = it.coerceAtLeast(0.01f) }),
         Prop.F("Size Y", { sizeY }, { sizeY = it.coerceAtLeast(0.01f) }),
         Prop.F("Size Z", { sizeZ }, { sizeZ = it.coerceAtLeast(0.01f) }),

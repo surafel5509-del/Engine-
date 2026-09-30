@@ -87,7 +87,6 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
     private val handler = Handler(Looper.getMainLooper())
     private var lastObjectCount = -1
-    private var importKind = AssetKind.TEXTURE
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -104,8 +103,12 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         }
     }
 
-    private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importAsset(uri)
+    private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) importUris(uris)
+    }
+
+    private val importFolderLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree != null) importTree(tree)
     }
 
     private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -312,9 +315,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         assetButtons.addView(button("+ Animation") { newAssetDialog("New Animation", "NewAnimation", "anim", { com.sengine.engine.anim.AnimationClip().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Song") { newAssetDialog("New Song", "Theme", "song", { MusicEditorActivity.newSongJson(it.substringBeforeLast('.')) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ 3D Model") { newAssetDialog("New 3D Model", "MyModel", "smodel", { ModelEditorActivity.newModelJson() }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Model") { importKind = AssetKind.MODEL; importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Image") { importKind = AssetKind.TEXTURE; importLauncher.launch(arrayOf("image/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Sound") { importKind = AssetKind.SOUND; importLauncher.launch(arrayOf("audio/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("Import Files") { importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("Import Folder") { importFolderLauncher.launch(null) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         tabs.addView(assetButtons)
         tabs.addView(button("Clear", C.HEADER) { consoleText.text = "" }.apply { textSize = 12f })
         tabs.addView(button("▾", C.HEADER) { toggle(bottomContent) }.apply { textSize = 12f })
@@ -895,37 +897,87 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         pm.show()
     }
 
-    private fun importAsset(uri: Uri) {
-        try {
-            var display = "asset"
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) display = it.getString(0)
-            }
-            var n = display.replace(Regex("[^A-Za-z0-9_.\\-]"), "_")
-            if (AssetKind.of(n) == null) {
-                val mime = contentResolver.getType(uri) ?: ""
-                n += when {
-                    mime.contains("png") -> ".png"
-                    mime.contains("jpeg") || mime.contains("jpg") -> ".jpg"
-                    mime.contains("webp") -> ".webp"
-                    mime.contains("ogg") -> ".ogg"
-                    mime.contains("mpeg") || mime.contains("mp3") -> ".mp3"
-                    mime.contains("wav") -> ".wav"
-                    importKind == AssetKind.MODEL -> ".obj"
-                    importKind == AssetKind.SOUND -> ".ogg"
-                    else -> ".png"
+    /** v7 import: any file, any size — models convert (obj/stl/ply/gltf/glb/dae/fbx), archives extract, the rest is stored as-is. */
+    private fun importUris(uris: List<Uri>) {
+        val progress = com.sengine.project.importer.AssetImporter.Progress()
+        progress.total = uris.size
+        toast("Importing " + uris.size + " file" + (if (uris.size == 1) "" else "s") + "…")
+        Thread {
+            val results = ArrayList<com.sengine.project.importer.AssetImporter.FileResult>()
+            for (uri in uris) {
+                try {
+                    var display = "asset"
+                    contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                        if (it.moveToFirst()) display = it.getString(0) ?: "asset"
+                    }
+                    val name = display.replace(Regex("[^A-Za-z0-9_.\\-]"), "_")
+                    val size = contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+                    results.add(com.sengine.project.importer.AssetImporter.importFile(project, name, contentResolver.openInputStream(uri)!!, size, progress = progress))
+                } catch (e: Exception) {
+                    results.add(com.sengine.project.importer.AssetImporter.FileResult(uri.lastPathSegment ?: "file", false, e.message ?: "failed"))
                 }
             }
-            n = project.uniqueAssetName(n)
-            project.assetsDir.mkdirs()
-            contentResolver.openInputStream(uri)!!.use { input -> project.assetFile(n).outputStream().use { input.copyTo(it) } }
-            refreshAssets()
-            showTab(1)
-            toast("Imported $n")
-        } catch (e: Exception) {
-            toast("Import failed: ${e.message}")
+            val ok = results.count { it.ok }
+            val summary = results.joinToString("\n") { (if (it.ok) "✓ " else "✗ ") + it.name + " — " + it.note }
+            handler.post {
+                refreshAssets()
+                showTab(1)
+                appendConsole(1, "Import: $ok/${results.size} files imported\n$summary")
+                toast("$ok of ${results.size} imported")
+            }
+        }.start()
+    }
+
+    /** v7 folder import: picks a whole directory tree (works with .mtl/.bin side-car files). */
+    private fun importTree(tree: Uri) {
+        val rootName = queryTreeName(tree) ?: "folder"
+        toast("Importing folder $rootName…")
+        Thread {
+            try {
+                val files = ArrayList<Pair<String, () -> java.io.InputStream>>()
+                walkTree(tree, "", files)
+                val progress = com.sengine.project.importer.AssetImporter.Progress()
+                val results = com.sengine.project.importer.AssetImporter.importFolder(project, rootName, files, progress)
+                val ok = results.count { it.ok }
+                val summary = results.take(24).joinToString("\n") { (if (it.ok) "✓ " else "✗ ") + it.name + " — " + it.note }
+                handler.post {
+                    refreshAssets()
+                    showTab(1)
+                    appendConsole(1, "Folder import: $ok/${results.size} files\n$summary")
+                    toast("$ok of ${results.size} imported")
+                }
+            } catch (e: Exception) {
+                handler.post { toast("Folder import failed: " + e.message) }
+            }
+        }.start()
+    }
+
+    private fun walkTree(tree: Uri, prefix: String, out: MutableList<Pair<String, () -> java.io.InputStream>>) {
+        val children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree))
+        val projection = arrayOf(
+            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE)
+        contentResolver.query(children, projection, null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                val docId = c.getString(0)
+                val name = c.getString(1) ?: continue
+                val mime = c.getString(2)
+                val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, docId)
+                if (mime == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) {
+                    walkTree(docUri, "$prefix$name/", out)
+                } else {
+                    out.add("$prefix$name" to { contentResolver.openInputStream(docUri)!! })
+                }
+            }
         }
     }
+
+    private fun queryTreeName(tree: Uri): String? = try {
+        contentResolver.query(tree, arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    } catch (_: Exception) { null }
 
     // ================================================================== console & input
     private fun appendConsole(level: Int, msg: String) {

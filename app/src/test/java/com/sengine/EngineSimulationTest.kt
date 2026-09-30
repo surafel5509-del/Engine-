@@ -18,11 +18,11 @@ import java.nio.file.Files
  */
 class EngineSimulationTest {
 
-    private fun newProject(template: Int): Project {
+    private fun newProject(name: String): Project {
         val dir = Files.createTempDirectory("sengine").toFile()
         val p = Project(File(dir, "Test"))
         p.saveMeta()
-        Templates.all[template].build(p)
+        Templates.all.first { it.name == name }.build(p)
         p.saveMeta()
         return p
     }
@@ -50,7 +50,7 @@ class EngineSimulationTest {
 
     @Test
     fun serializationRoundTrip() {
-        val p = newProject(1)
+        val p = newProject("Platformer Demo")
         val s = p.loadScene("Main")
         val json = SceneSerializer.toJson(s).toString()
         val s2 = SceneSerializer.fromJson(JSONObject(json))
@@ -61,7 +61,7 @@ class EngineSimulationTest {
 
     @Test
     fun platformerPlayerMovesJumpsAndCollects() {
-        val r = start(newProject(1))
+        val r = start(newProject("Platformer Demo"))
         val player = r.engine.scene.find("Player")!!
         val x0 = player.x
         // settle on the ground
@@ -101,7 +101,7 @@ class EngineSimulationTest {
 
     @Test
     fun shooterRunsWithoutErrors() {
-        val r = start(newProject(2))
+        val r = start(newProject("Space Shooter"))
         r.frames(600) { r.engine.input.rawA = true; r.engine.input.joyX = if ((it / 60) % 2 == 0) 1f else -1f }
         val stars = r.engine.scene.objects.count { it.name.startsWith("Star (") }
         val score = r.engine.scene.find("ScoreText")!!.getAny<com.sengine.engine.core.TextRenderer>()!!.text
@@ -112,7 +112,7 @@ class EngineSimulationTest {
 
     @Test
     fun physicsSandboxTapSpawns() {
-        val r = start(newProject(3))
+        val r = start(newProject("Physics Sandbox"))
         val before = r.engine.scene.objects.size
         r.frames(30)
         r.engine.input.rawTouchSX = 800f; r.engine.input.rawTouchSY = 200f; r.engine.input.tapPending = true
@@ -129,7 +129,7 @@ class EngineSimulationTest {
 
     @Test
     fun scriptErrorsAreReportedNotThrown() {
-        val p = newProject(0)
+        val p = newProject("Empty 2D")
         p.writeAsset("Bad.js", "function update(dt) { undefinedThing.foo(); }")
         val s = p.loadScene("Main")
         s.find("Square")!!.add(com.sengine.engine.core.ScriptComponent().also { it.script = "Bad.js" })

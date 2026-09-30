@@ -2,6 +2,7 @@ package com.sengine.engine.physics
 
 import com.sengine.engine.core.Collider3D
 import com.sengine.engine.core.GameObject
+import com.sengine.engine.core.Joint3D
 import com.sengine.engine.core.Rigidbody3D
 import com.sengine.engine.core.Scene
 import com.sengine.engine.core.VoxelWorld
@@ -10,9 +11,11 @@ import com.sengine.engine.voxel.Blocks
 import com.sengine.engine.voxel.VoxelData
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
@@ -27,6 +30,7 @@ class PhysicsWorld3D {
     private val fixedDt = 1f / 60f
     private var prevContacts = HashSet<Long>()
     private var prevTriggers = HashSet<Long>()
+    private val fixedRest = HashMap<Int, FloatArray>()
     /** Stats for the profiler. */
     var bodyCount = 0; private set
     var pairTests = 0; private set
@@ -35,18 +39,23 @@ class PhysicsWorld3D {
     private class Body(val go: GameObject, val rb: Rigidbody3D?, val col: Collider3D) {
         var cx = 0f; var cy = 0f; var cz = 0f
         var hx = 0f; var hy = 0f; var hz = 0f; var r = 0f
+        /** v7 capsule: cylinder half length between the two hemisphere centres. */
+        var capHalf = 0f
         val sphere get() = col.shape == 1
+        val capsule get() = col.shape == 2
         val dynamic get() = rb != null && rb.bodyType == 0
         val invMass get() = if (rb == null || rb.bodyType != 0) 0f else 1f / rb.mass
         val sleeping get() = rb != null && rb.sleepTime > SLEEP_AFTER
-        fun minX() = if (sphere) cx - r else cx - hx
-        fun maxX() = if (sphere) cx + r else cx + hx
+        fun minX() = if (sphere || capsule) cx - r else cx - hx
+        fun maxX() = if (sphere || capsule) cx + r else cx + hx
+        fun segA(): FloatArray = floatArrayOf(cx, cy - capHalf, cz)
+        fun segB(): FloatArray = floatArrayOf(cx, cy + capHalf, cz)
     }
 
     private class Contact(val a: Body, val b: Body, var nx: Float, var ny: Float, var nz: Float, var depth: Float)
     private class M(val nx: Float, val ny: Float, val nz: Float, val depth: Float)
 
-    fun reset() { accumulator = 0f; prevContacts = HashSet(); prevTriggers = HashSet() }
+    fun reset() { accumulator = 0f; prevContacts = HashSet(); prevTriggers = HashSet(); fixedRest.clear() }
 
     fun step(scene: Scene, dt: Float) {
         val waters = WaterPhysics.volumes(scene, 1)
@@ -157,6 +166,7 @@ class PhysicsWorld3D {
             if (a != null && b != null) listener?.onTriggerExit(a, b)
         }
         prevContacts = contactKeys; prevTriggers = triggers
+        solveJoints(scene, dt)
         // sleeping bookkeeping
         for (b in bodies) {
             val rb = b.rb ?: continue
@@ -195,6 +205,28 @@ class PhysicsWorld3D {
 
     /** Wake a body (e.g. after a script changes its velocity). */
     fun wake(rb: Rigidbody3D) { rb.sleepTime = 0f }
+
+    /**
+     * v7 force field / explosion: pushes every dynamic rigidbody within [radius] of (x,y,z)
+     * away from the centre. [force] is in velocity units at the centre, falling off linearly.
+     * Positive force pushes out, negative sucks in (vortex/implosion fields).
+     */
+    fun radialForce(scene: Scene, x: Float, y: Float, z: Float, radius: Float, force: Float) {
+        val r2 = radius * radius
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy() || go.destroyed) continue
+            val rb = go.get<Rigidbody3D>() ?: continue
+            if (rb.bodyType != 0) continue
+            val w = go.world3
+            val dx = w[12] - x; val dy = w[13] - y; val dz = w[14] - z
+            val d2 = dx * dx + dy * dy + dz * dz
+            if (d2 > r2) continue
+            val d = sqrt(d2).coerceAtLeast(0.3f)
+            val k = force * (1f - d / radius) / d
+            rb.vx += dx * k; rb.vy += dy * k; rb.vz += dz * k
+            rb.sleepTime = 0f
+        }
+    }
 
     private fun collideVoxels(b: Body, vgo: GameObject, v: VoxelData) {
         val rb = b.rb ?: return
@@ -243,14 +275,90 @@ class PhysicsWorld3D {
         val sx = Mat4.scaleOf(w, 0); val sy = Mat4.scaleOf(w, 1); val sz = Mat4.scaleOf(w, 2)
         b.hx = b.col.sizeX * sx / 2; b.hy = b.col.sizeY * sy / 2; b.hz = b.col.sizeZ * sz / 2
         b.r = b.col.radius * max(sx, max(sy, sz))
+        if (b.capsule) {
+            b.r = max(0.01f, min(b.r, b.hy))
+            b.capHalf = (b.hy - b.r).coerceAtLeast(0f)
+            b.hx = b.r; b.hz = b.r
+        }
     }
 
     private fun collide(a: Body, b: Body): M? = when {
+        a.capsule || b.capsule -> capsuleCollide(a, b)
         !a.sphere && !b.sphere -> boxBox(a, b)
         a.sphere && b.sphere -> sphereSphere(a, b)
         !a.sphere && b.sphere -> boxSphere(a, b)
         else -> boxSphere(b, a)?.let { M(-it.nx, -it.ny, -it.nz, it.depth) }
     }
+
+    /** v7 capsule collisions: capsule vs sphere / box / capsule via closest-point on the spine segment. */
+    private fun capsuleCollide(a: Body, b: Body): M? = when {
+        a.capsule && b.capsule -> segSeg(a, b)
+        a.capsule -> capVs(a, b)
+        else -> capVs(b, a)?.let { M(-it.nx, -it.ny, -it.nz, it.depth) }
+    }
+
+    private fun closestOnSeg(cap: Body, x: Float, y: Float, z: Float): FloatArray {
+        val ay = (cap.cy - cap.capHalf).coerceAtMost(cap.cy + cap.capHalf)
+        val by = (cap.cy + cap.capHalf).coerceAtLeast(cap.cy - cap.capHalf)
+        val t = if (by - ay < 1e-6f) 0f else ((y - ay) / (by - ay)).coerceIn(0f, 1f)
+        return floatArrayOf(cap.cx, ay + (by - ay) * t, cap.cz)
+    }
+
+    private fun capVs(cap: Body, other: Body): M? {
+        val p = closestOnSeg(cap, other.cx, other.cy, other.cz)
+        return if (other.sphere) {
+            val dx = other.cx - p[0]; val dy = other.cy - p[1]; val dz = other.cz - p[2]
+            val rs = cap.r + other.r; val d2 = dx * dx + dy * dy + dz * dz
+            if (d2 >= rs * rs) null else {
+                val d = sqrt(d2)
+                if (d < 1e-5f) M(0f, 1f, 0f, rs) else M(dx / d, dy / d, dz / d, rs - d)
+            }
+        } else {
+            val px = p[0].coerceIn(other.cx - other.hx, other.cx + other.hx)
+            val py = p[1].coerceIn(other.cy - other.hy, other.cy + other.hy)
+            val pz = p[2].coerceIn(other.cz - other.hz, other.cz + other.hz)
+            val dx = p[0] - px; val dy = p[1] - py; val dz = p[2] - pz
+            val d2 = dx * dx + dy * dy + dz * dz
+            if (d2 > cap.r * cap.r) null else if (d2 < 1e-8f) {
+                val ox = other.hx - abs(p[0] - other.cx); val oy = other.hy - abs(p[1] - other.cy); val oz = other.hz - abs(p[2] - other.cz)
+                when {
+                    oy <= ox && oy <= oz -> M(0f, if (p[1] < other.cy) 1f else -1f, 0f, oy + cap.r)
+                    ox <= oz -> M(if (p[0] < other.cx) 1f else -1f, 0f, 0f, ox + cap.r)
+                    else -> M(0f, 0f, if (p[2] < other.cz) 1f else -1f, oz + cap.r)
+                }
+            } else {
+                val d = sqrt(d2)
+                M(-dx / d, -dy / d, -dz / d, cap.r - d) // box-point -> capsule was inverted; n points a -> b
+            }
+        }
+    }
+
+    private fun segSeg(a: Body, b: Body): M? {
+        val a1 = a.segA(); val a2 = a.segB(); val b1 = b.segA(); val b2 = b.segB()
+        val d1 = floatArrayOf(a2[0] - a1[0], a2[1] - a1[1], a2[2] - a1[2])
+        val d2 = floatArrayOf(b2[0] - b1[0], b2[1] - b1[1], b2[2] - b1[2])
+        val r = floatArrayOf(a1[0] - b1[0], a1[1] - b1[1], a1[2] - b1[2])
+        val A = dot(d1, d1); val E = dot(d2, d2); val F = dot(d2, r)
+        var s = 0f; var t = 0f
+        if (A <= 1e-8f && E <= 1e-8f) { s = 0f; t = 0f } else if (A <= 1e-8f) { t = (F / E).coerceIn(0f, 1f) } else {
+            val C = dot(d1, r)
+            if (E <= 1e-8f) { s = (-C / A).coerceIn(0f, 1f) } else {
+                val B = dot(d1, d2); val denom = A * E - B * B
+                s = if (denom > 1e-8f) ((B * F - C * E) / denom).coerceIn(0f, 1f) else 0f
+                t = (B * s + F) / E
+                if (t < 0f) { t = 0f; s = (-C / A).coerceIn(0f, 1f) } else if (t > 1f) { t = 1f; s = ((B - C) / A).coerceIn(0f, 1f) }
+            }
+        }
+        val p1 = floatArrayOf(a1[0] + d1[0] * s, a1[1] + d1[1] * s, a1[2] + d1[2] * s)
+        val p2 = floatArrayOf(b1[0] + d2[0] * t, b1[1] + d2[1] * t, b1[2] + d2[2] * t)
+        val dx = p2[0] - p1[0]; val dy = p2[1] - p1[1]; val dz = p2[2] - p1[2]
+        val rs = a.r + b.r; val dist2 = dx * dx + dy * dy + dz * dz
+        if (dist2 >= rs * rs) return null
+        val d = sqrt(dist2)
+        return if (d < 1e-5f) M(0f, 1f, 0f, rs) else M(dx / d, dy / d, dz / d, rs - d)
+    }
+
+    private fun dot(a: FloatArray, b: FloatArray) = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
     private fun boxBox(a: Body, b: Body): M? {
         val dx = b.cx - a.cx; val ox = a.hx + b.hx - abs(dx); if (ox <= 0f) return null
@@ -346,7 +454,11 @@ class PhysicsWorld3D {
             val col = go.get<Collider3D>() ?: continue
             if (col.isTrigger) continue
             val b = Body(go, null, col); refresh(b)
-            val t = if (b.sphere) raySphere(ox, oy, oz, dx, dy, dz, b) else rayBox(ox, oy, oz, dx, dy, dz, b)
+            val t = when {
+                b.sphere -> raySphere(ox, oy, oz, dx, dy, dz, b)
+                b.capsule -> rayCapsule(ox, oy, oz, dx, dy, dz, b)
+                else -> rayBox(ox, oy, oz, dx, dy, dz, b)
+            }
             if (t != null && t >= 0f && t < bestT) {
                 bestT = t
                 val hx = ox + dx * t; val hy = oy + dy * t; val hz = oz + dz * t
@@ -410,6 +522,128 @@ class PhysicsWorld3D {
 
     private fun rayBox(ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float, b: Body): Float? =
         rayAabb(ox, oy, oz, dx, dy, dz, b.cx - b.hx, b.cy - b.hy, b.cz - b.hz, b.cx + b.hx, b.cy + b.hy, b.cz + b.hz)
+
+    /** Ray vs capsule: closest approach between the ray and the spine segment, then a sphere test. */
+    private fun rayCapsule(ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float, b: Body): Float? {
+        val ay = b.cy - b.capHalf; val by = b.cy + b.capHalf
+        // unroll the capsule spine onto the ray param by clamping y
+        val hitTop = raySphere2(ox, oy, oz, dx, dy, dz, TempSphere(b.cx, by, b.cz, b.r))
+        val hitBot = raySphere2(ox, oy, oz, dx, dy, dz, TempSphere(b.cx, ay, b.cz, b.r))
+        val best = listOfNotNull(hitTop, hitBot).filter { it >= 0f }.minOrNull()
+        // cylinder core (vertical only — good enough for character capsules)
+        val cyl = rayVerticalCylinder(ox, oy, oz, dx, dy, dz, b.cx, b.cz, b.r, ay, by)
+        return listOfNotNull(best, cyl).filter { it >= 0f }.minOrNull()
+    }
+
+    private class TempSphere(val cx: Float, val cy: Float, val cz: Float, val r: Float)
+
+    private fun raySphere2(ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float, s: TempSphere): Float? {
+        val lx = ox - s.cx; val ly = oy - s.cy; val lz = oz - s.cz
+        val bb = lx * dx + ly * dy + lz * dz
+        val c = lx * lx + ly * ly + lz * lz - s.r * s.r
+        val disc = bb * bb - c
+        if (disc < 0f) return null
+        return -bb - sqrt(disc)
+    }
+
+    private fun rayVerticalCylinder(ox: Float, oy: Float, oz: Float, dx: Float, dy: Float, dz: Float, cx: Float, cz: Float, r: Float, y0: Float, y1: Float): Float? {
+        val rox = ox - cx; val roz = oz - cz
+        val a = dx * dx + dz * dz
+        if (a < 1e-8f) return if (rox * rox + roz * roz <= r * r && ((oy in y0..y1) || (oy + dy * 1000f in y0..y1))) 0f else null
+        val b = rox * dx + roz * dz
+        val c = rox * rox + roz * roz - r * r
+        val disc = b * b - a * c
+        if (disc < 0f) return null
+        val sq = sqrt(disc)
+        for (t in listOf((-b - sq) / a, (-b + sq) / a)) {
+            if (t < 0f) continue
+            val y = oy + dy * t
+            if (y in y0..y1) return t
+        }
+        return null
+    }
+
+    // ================================================================================ joints (v7)
+
+    /** Simple constraint solver for Fixed / Spring / Hinge joints, run after contacts each step. */
+    private fun solveJoints(scene: Scene, dt: Float) {
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val j = go.get<Joint3D>() ?: continue
+            if (!j.enabled || j.broken) continue
+            val other = scene.find(j.target) ?: continue
+            val rb = go.get<Rigidbody3D>()
+            val orb = other.get<Rigidbody3D>()
+            val w = go.computeWorld3(); val ow = other.computeWorld3()
+            val dx = ow[12] - w[12]; val dy = ow[13] - w[13]; val dz = ow[14] - w[14]
+            val dist = sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-5f)
+            when (j.kind) {
+                0 -> { // fixed: hold the rest offset captured on the first step
+                    val key = System.identityHashCode(j)
+                    val rest = fixedRest.getOrPut(key) { floatArrayOf(dx, dy, dz) }
+                    val ex = dx - rest[0]; val ey = dy - rest[1]; val ez = dz - rest[2]
+                    val err = sqrt(ex * ex + ey * ey + ez * ez)
+                    if (j.breakForce > 0f && err > j.breakForce) { j.broken = true; fixedRest.remove(key); continue }
+                    val corr = 0.35f
+                    if (rb != null && rb.bodyType == 0) { move(go, ex * corr, ey * corr, ez * corr); rb.vx += ex * 6f * corr; rb.vy += ey * 6f * corr; rb.vz += ez * 6f * corr }
+                    else if (orb != null && orb.bodyType == 0) { move(other, -ex * corr, -ey * corr, -ez * corr); orb.vx -= ex * 6f * corr; orb.vy -= ey * 6f * corr; orb.vz -= ez * 6f * corr }
+                }
+                1 -> { // spring: pull towards targetDistance
+                    val target = j.targetDistance
+                    if (j.breakForce > 0f && abs(dist - target) > j.breakForce * 4f) { j.broken = true; continue }
+                    val stretch = dist - target
+                    if (abs(stretch) > 1e-4f) {
+                        val nx = dx / dist; val ny = dy / dist; val nz = dz / dist
+                        val rvx = (orb?.vx ?: 0f) - (rb?.vx ?: 0f); val rvy = (orb?.vy ?: 0f) - (rb?.vy ?: 0f); val rvz = (orb?.vz ?: 0f) - (rb?.vz ?: 0f)
+                        val vn = rvx * nx + rvy * ny + rvz * nz
+                        val k = j.springFrequency * j.springFrequency * 2f
+                        val force = k * stretch - vn * j.springDamping * 2f * j.springFrequency
+                        val imp = force * dt
+                        if (rb != null && rb.bodyType == 0) { rb.vx += nx * imp; rb.vy += ny * imp; rb.vz += nz * imp }
+                        if (orb != null && orb.bodyType == 0) { orb.vx -= nx * imp; orb.vy -= ny * imp; orb.vz -= nz * imp }
+                    }
+                }
+                2 -> { // hinge: soft distance spring at the pivot + a motor that spins the object around its local axis
+                    val err = dist - j.targetDistance
+                    if (abs(err) > 1e-4f) {
+                        val nx = dx / dist; val ny = dy / dist; val nz = dz / dist
+                        if (rb != null && rb.bodyType == 0) { rb.vx -= nx * err * 8f * dt * 60f * 0.02f; rb.vy -= ny * err * 8f * dt * 60f * 0.02f; rb.vz -= nz * err * 8f * dt * 60f * 0.02f }
+                        if (orb != null && orb.bodyType == 0) { orb.vx += nx * err * 8f * dt * 60f * 0.02f; orb.vy += ny * err * 8f * dt * 60f * 0.02f; orb.vz += nz * err * 8f * dt * 60f * 0.02f }
+                    }
+                    if (j.motorSpeed != 0f && j.motorTorque >= 0f) {
+                        val speed = if (j.motorTorque > 0f) j.motorSpeed else 0f
+                        if (speed != 0f) {
+                            j.angle += speed * dt
+                            val local = go.localMatrix3()
+                            val out = FloatArray(16)
+                            val rot = axisAngle(j.axisX, j.axisY, j.axisZ, speed * dt)
+                            Mat4.mul(out, local, rot)
+                            go.x = out[12]; go.y = out[13]; go.z = out[14]
+                            // decompose the rotation back to euler degrees (Y-X-Z like Mat4.trs)
+                            val sy2 = -out[2]
+                            val syC = sqrt((out[0] * out[0] + out[1] * out[1]).toDouble()).toFloat()
+                            val rx2 = Math.toDegrees(kotlin.math.atan2(out[6].toDouble(), out[10].toDouble())).toFloat()
+                            val ry2 = Math.toDegrees(kotlin.math.atan2(sy2.toDouble(), syC.toDouble())).toFloat()
+                            val rz2 = Math.toDegrees(kotlin.math.atan2(out[1].toDouble(), out[0].toDouble())).toFloat()
+                            go.rotX = rx2; go.rotY = ry2; go.rotation = rz2
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun axisAngle(x: Float, y: Float, z: Float, deg: Float): FloatArray {
+        val l = sqrt(x * x + y * y + z * z).coerceAtLeast(1e-6f)
+        val nx = x / l; val ny = y / l; val nz = z / l
+        val a = Math.toRadians(deg.toDouble())
+        val c = cos(a).toFloat(); val s = sin(a).toFloat(); val t = 1f - c
+        return floatArrayOf(
+            t * nx * nx + c, t * nx * ny - s * nz, t * nx * nz + s * ny, 0f,
+            t * nx * ny + s * nz, t * ny * ny + c, t * ny * nz - s * nx, 0f,
+            t * nx * nz - s * ny, t * ny * nz + s * nx, t * nz * nz + c, 0f,
+            0f, 0f, 0f, 1f)
+    }
 
     companion object {
         const val SLEEP_AFTER = 0.8f

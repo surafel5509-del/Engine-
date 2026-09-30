@@ -2,7 +2,7 @@ package com.sengine.project.games
 
 import com.sengine.project.Templates
 
-/** The complete sample games shipped with S Engine Full Edition. */
+/** The complete sample games shipped with S Engine v7 Ultimate Studio. */
 object Games {
     /** Reads a bundled game script from the Java resources (works on Android and in JVM unit tests). */
     fun res(path: String): String =
@@ -12,12 +12,14 @@ object Games {
 
     val templates: List<Templates.Template> by lazy {
         listOf(
-            Templates.Template("Sky Strike (2D Shooter)", "Complete top-down shoot 'em up: menu, settings, level select with stars, 3 levels with waves, bosses, power-ups and bombs.") { ShooterGame.build(it) },
-            Templates.Template("Dead Zone (2D Zombie)", "Complete zombie survival: twin-stick aiming, 3 weapons with reloading, 3 zombie types, endless waves, loot and upgrades.") { ZombieGame.build(it) },
-            Templates.Template("Turbo Rally (3D Racing)", "Complete 3D racing: 2 maps × 3 roads, 5 AI drivers, drift & nitro, laps, positions, minimap, 3 cameras, settings and records.") { RacingGame.build(it) },
-            Templates.Template("MiniCraft (3D Voxel)", "Complete voxel sandbox: infinite-feeling worlds, first-person building, hotbar, fly mode, day/night, animals and saved worlds.") { CraftGame.build(it) },
+            Templates.Template("Crystal Caverns (2D Platformer)", "Complete cave platformer adventure: hero with run/jump animation, gems, 3 enemy types (bat, slime, golem), spikes, moving platforms, checkpoints, 3 levels with bosses' gates, menu, HUD, pause and saves.") { CavernsGame.build(it) },
+            Templates.Template("Slice Master (2D Arcade)", "Complete fruit-slicing arcade: swipe to slice, physics fruit arcs, juicy splashes, combos, bombs, lives, classic + frenzy modes, menu, HUD and records.") { SliceGame.build(it) },
+            Templates.Template("Iron Guard (2D Tower Defense)", "Complete tower defense: build/upgrade/sell 3 tower types, 2 enemy types + bosses, 10 escalating waves, gold economy, lives, fast-forward, menu and victory screen.") { TowerGame.build(it) },
+            Templates.Template("Sky Harbor (3D Flight)", "Complete 3D flying game: a plane with a spinning propeller, fly through checkpoint rings over islands, throttle + boost, crash & respawn, day and dusk maps, timer, HUD and minimap radar.") { HarborGame.build(it) },
+            Templates.Template("Zombie Garage (3D Vehicle Combat)", "Complete drive-and-survive: a car with spinning wheels, auto-animated zombies that ragdoll when hit, waves, fuel, repairs, upgrades in the garage menu, HUD and game over.") { GarageGame.build(it) },
+            Templates.Template("Dungeon Quest (3D Action RPG)", "Complete third-person action RPG: auto-animated hero (walk/attack/celebrate/death), skeleton guards, treasure chests, potions, portal objectives, minimap radar, 2 dungeon floors, menu and HUD.") { DungeonGame.build(it) },
             Templates.Template("Strike Force (3D FPS)", "Complete first-person shooter: desert compound + night raid, patrolling soldiers with line-of-sight AI, rifle/shotgun/pistol with ADS and headshots, grenades, exploding barrels, extraction.") { FpsGame.build(it) },
-            Templates.Template("Iron Tanks (2D Tank Battle)", "Complete top-down tank war: aiming turret, destructible walls, rivers and bushes, 3 enemy tank types, HQ defence, HE shells, power-ups, 3 missions with stars.") { TankGame.build(it) },
+            Templates.Template("Open World 2D (Open Sample)", "The open sample game: a small explorable world with a town, NPCs and quests, day/night cycle, house interiors and fully commented scripts — the best place to learn how S Engine games are made.") { OpenWorldGame.build(it) },
         )
     }
 }

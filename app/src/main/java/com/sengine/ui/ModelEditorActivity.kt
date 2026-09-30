@@ -351,6 +351,8 @@ class ModelEditorActivity : AppCompatActivity() {
                 tb("plus", "Add") { addPartMenu(bottom) }
                 tb("copy", "Duplicate") { duplicatePart(false) }
                 tb("mirror", "Mirror copy X") { duplicatePart(true) }
+                tb("grid", "Array…") { arrayDialog() }
+                tb("layers", "True mirror…") { mirrorPartDialog() }
                 tb("trash", "Delete", C.PANEL2) { deletePart() }
                 tb("scale", "Apply scale") { part?.let { pushUndo(); ModelOps.applyScale(it); refreshProps(); view3d.invalidate() } }
                 tb("target", "Origin to centre") { originToCenter() }
@@ -377,6 +379,7 @@ class ModelEditorActivity : AppCompatActivity() {
                 tb("magnet", "Merge") { editOp { p -> toast("Merged ${ModelOps.mergeByDistance(p, 0.01f)} vertices") } }
                 tb("refresh", "Flip normals") { withFaces { p, f -> ModelOps.flip(p, f); f } }
                 tb("brush", "Paint faces") { paintFaces() }
+                tb("brush", "Sculpt", C.ACCENT) { sculptDialog() }
                 tb("trash", "Delete") { deleteSelection() }
                 tb("rocket", "Randomize") { editOp { p -> val v = selectedVerts(p).ifEmpty { p.verts.indices.toSet() }; for (i in v) for (k in 0 until 3) p.verts[i][k] += (Math.random().toFloat() - 0.5f) * 0.06f } }
             }
@@ -722,15 +725,72 @@ class ModelEditorActivity : AppCompatActivity() {
     }
 
     // ================================================================ object operations
+    /** v7 sculpt brush: Pull / Inflate / Smooth / Flatten / Pinch around the selection (or whole part). */
+    private fun sculptDialog() {
+        val p = part ?: run { toast("Select a part first"); return }
+        val brushes = com.sengine.engine.model.ModelSculpt.BRUSHES
+        MaterialAlertDialogBuilder(this).setTitle("Sculpt brush")
+            .setItems(brushes.toTypedArray()) { _, mode ->
+                askText("Sculpt ${brushes[mode]}: radius, strength", "0.6, 0.5") { t ->
+                    val v = t.split(',').map { it.trim().toFloatOrNull() }
+                    val radius = v.getOrNull(0) ?: 0.6f
+                    val strength = v.getOrNull(1) ?: 0.5f
+                    pushUndo()
+                    val center = if (selVerts.isNotEmpty()) {
+                        FloatArray(3) { k -> selVerts.sumOf { p.verts[it][k].toDouble() }.toFloat() / selVerts.size }
+                    } else FloatArray(3) { k -> p.verts.sumOf { it[k].toDouble() }.toFloat() / p.verts.size.coerceAtLeast(1) }
+                    val sel = selVerts.ifEmpty { null }
+                    val moved = com.sengine.engine.model.ModelSculpt.brush(p, center, radius, mode, strength, sel)
+                    refreshAll()
+                    toast("${brushes[mode]}: $moved vertices")
+                }
+            }.show()
+    }
+
+    /** v7 array modifier: duplicate the part N times along an offset. */
+    private fun arrayDialog() {
+        val p = part ?: run { toast("Select a part first"); return }
+        askText("Array: count, offset x,y,z", "4, 1.2, 0, 0") { t ->
+            val v = t.split(',').map { it.trim().toFloatOrNull() }
+            val count = (v.getOrNull(0) ?: 4f).toInt().coerceIn(2, 32)
+            pushUndo()
+            val made = com.sengine.engine.model.ModelSculpt.array(p, count, v.getOrNull(1) ?: 1.2f, v.getOrNull(2) ?: 0f, v.getOrNull(3) ?: 0f)
+            refreshAll(); view3d.frameAll()
+            toast("Array: $made parts")
+        }
+    }
+
+    /** v7 true mirror modifier: welds a mirrored copy of the part onto itself (great for characters). */
+    private fun mirrorPartDialog() {
+        val p = part ?: run { toast("Select a part first"); return }
+        MaterialAlertDialogBuilder(this).setTitle("Mirror across axis").setItems(arrayOf("X", "Y", "Z")) { _, axis ->
+            pushUndo()
+            com.sengine.engine.model.ModelSculpt.mirrorPart(p, axis)
+            refreshAll(); view3d.frameSelected()
+            toast("Mirrored across " + "XYZ"[axis])
+        }.show()
+    }
+
     private fun addPartMenu(anchor: View) {
         val pm = android.widget.PopupMenu(this, anchor)
         SModel.PRIMITIVES.forEachIndexed { i, n -> pm.menu.add(0, i, i, n) }
+        pm.menu.add(0, 90, 90, "— Sculpt primitives —").isEnabled = false
+        com.sengine.engine.model.ModelSculpt.PRIMITIVES.forEachIndexed { i, n -> pm.menu.add(0, 200 + i, 200 + i, n) }
         pm.menu.add(0, 100, 100, "Preset model…")
         pm.menu.add(0, 101, 101, "Import OBJ from assets…")
         pm.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 100 -> MaterialAlertDialogBuilder(this).setTitle("Preset models").setItems(ModelPresets.NAMES.toTypedArray()) { _, w -> addPreset(w) }.show()
                 101 -> importObj()
+                in 200 until 200 + com.sengine.engine.model.ModelSculpt.PRIMITIVES.size -> {
+                    pushUndo()
+                    val p = com.sengine.engine.model.ModelSculpt.primitiveByName(com.sengine.engine.model.ModelSculpt.PRIMITIVES[item.itemId - 200]) ?: return@setOnMenuItemClickListener
+                    p.name = uniquePartName(p.name)
+                    p.color = intArrayOf(0xFF5B7CFF.toInt(), 0xFF22D3EE.toInt(), 0xFF34D399.toInt(), 0xFFFBBF24.toInt(), 0xFFFF5C6C.toInt(), 0xFFA78BFA.toInt())[model.parts.size % 6]
+                    p.pos[1] = 0.5f
+                    model.parts += p; partIdx = model.parts.size - 1
+                    refreshAll(); view3d.frameSelected()
+                }
                 else -> {
                     pushUndo()
                     val p = SModel.primitive(item.itemId, 16)

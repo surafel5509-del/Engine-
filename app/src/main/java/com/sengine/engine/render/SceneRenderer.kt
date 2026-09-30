@@ -15,6 +15,9 @@ import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.core.TextRenderer
 import com.sengine.engine.core.UIButton
 import com.sengine.engine.core.UIPanel
+import com.sengine.engine.core.UIRadar
+import com.sengine.engine.core.UISlider
+import com.sengine.engine.core.UIToggle
 import com.sengine.engine.core.UIProgress
 import com.sengine.engine.core.VoxelWorld
 import com.sengine.engine.math.Affine
@@ -149,7 +152,8 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
 
     private fun isScreenSpace(go: GameObject): Boolean =
         go.get<SpriteRenderer>()?.screenSpace == true || go.get<TextRenderer>()?.screenSpace == true ||
-            go.get<UIPanel>() != null || go.get<UIButton>() != null || go.get<UIProgress>() != null
+            go.get<UIPanel>() != null || go.get<UIButton>() != null || go.get<UIProgress>() != null ||
+            go.get<UISlider>() != null || go.get<UIToggle>() != null || go.get<UIRadar>() != null
 
     /** Draws sprite / text / particles of [go]. When [m3] is given the object is placed in 3D with that matrix. */
     private fun drawObject2D(go: GameObject, ppu: Float, m3: FloatArray?) {
@@ -283,6 +287,37 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 }
             }
         }
+        go.get<UISlider>()?.let { s ->
+            val inset = s.height * 0.18f
+            r.roundRect(w, 0f, 0f, s.width, s.height, s.height / 2f, s.backColor, ppu)
+            val v = s.value.coerceIn(0f, 1f)
+            if (v > 0.001f) {
+                val ww = (s.width - inset * 2) * v; val hh = s.height - inset * 2
+                r.roundRect(w, -s.width / 2 + inset + ww / 2, 0f, ww, hh, hh / 2f, s.fillColor, ppu)
+            }
+            val kx = -s.width / 2 + inset + (s.width - inset * 2) * v
+            val kr = s.height * 0.75f
+            r.roundRect(w, kx, 0f, kr, kr, kr / 2f, 0x66000000, ppu)
+            r.roundRect(w, kx, kr * 0.08f, kr * 0.94f, kr * 0.94f, kr * 0.47f, s.knobColor, ppu)
+        }
+        go.get<UIToggle>()?.let { t ->
+            if (t.style == 1) { // switch
+                val sw = t.width * 1.9f; val sh = t.width
+                r.roundRect(w, 0f, 0f, sw, sh, sh / 2f, if (t.checked) t.onColor else t.offColor, ppu)
+                val kx = if (t.checked) sw / 2 - sh * 0.52f else -sw / 2 + sh * 0.52f
+                val sc = if (t.pressed) 0.92f else 1f
+                r.roundRect(w, kx, 0f, sh * 0.88f * sc, sh * 0.88f * sc, sh * 0.44f * sc, 0xFFFFFFFF.toInt(), ppu)
+            } else { // checkbox
+                val sc = if (t.pressed) 0.9f else 1f
+                val s2 = t.width * sc
+                r.roundRect(w, 0f, 0f, s2, s2, s2 * 0.22f, if (t.checked) t.onColor else t.offColor, ppu)
+                if (t.checked) {
+                    val c = s2 * 0.5f
+                    r.roundRect(w, 0f, 0f, c, c, c * 0.28f, 0xFFFFFFFF.toInt(), ppu)
+                }
+            }
+        }
+        go.get<UIRadar>()?.let { rd -> drawRadar(go, rd, ppu, w) }
         go.get<UIButton>()?.let { b ->
             val tex = if (b.texture.isNotBlank()) textures.image(b.texture) else null
             val scale = if (b.pressed) 0.95f else 1f
@@ -299,6 +334,53 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 tmp.setMul(w, tmp2)
                 r.quad(tmp, b.textColor, 0, t, 100f)
             }
+        }
+    }
+
+    /** v7 minimap radar: plots live tracked objects around the player on a circular frame. */
+    private fun drawRadar(go: GameObject, rd: UIRadar, ppu: Float, w: Affine) {
+        val scene = engine.scene
+        val self = scene.objects.firstOrNull { it.tag == "Player" && it.isActiveInHierarchy() }
+            ?: scene.objects.firstOrNull { it.name.equals("Player", true) && it.isActiveInHierarchy() }
+        val wself = self?.computeWorld()
+        val cx = wself?.tx ?: 0f
+        val cy = wself?.ty ?: 0f
+        val cz = if (self != null) self.world3[14] else 0f
+        var yaw = 0f
+        if (rd.rotate) {
+            val cam = engine.mainCamera3D()
+            if (cam != null) yaw = Math.toRadians(cam.rotY.toDouble()).toFloat()
+        }
+        val tags = rd.track.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        val s = rd.size
+        // this radar's position on screen (UI anchors translate the object matrix)
+        val ox = w.tx; val oy = w.ty
+        // background + frame + rings (shape 1 = filled circle)
+        r.rect(ox, oy, s, s, rd.backColor, if (rd.circle) 1 else 0, ppu)
+        r.rect(ox, oy, s * 0.64f, s * 0.64f, (rd.ringColor and 0x00FFFFFF) or 0x33000000, 1, ppu)
+        r.rect(ox, oy, s * 0.995f, s * 0.995f, rd.ringColor, 3, ppu) // donut ring frame
+        // self dot
+        r.rect(ox, oy, s * 0.1f, s * 0.1f, rd.selfColor, 1, ppu)
+        for (o in scene.objects) {
+            if (!o.isActiveInHierarchy() || o === self) continue
+            if (o.tag !in tags && !tags.any { o.name.contains(it, true) }) continue
+            val ow = o.computeWorld()
+            val dxw = ow.tx - cx; val dyw = ow.ty - cy
+            val dz = if (o.z != 0f || cz != 0f) { val m3 = o.world3; m3[14] - cz } else 0f
+            val dist = kotlin.math.sqrt(dxw * dxw + dyw * dyw + dz * dz)
+            if (dist > rd.range || dist < 1e-4f) continue
+            var px = dxw; var py = dyw
+            if (rd.rotate && yaw != 0f) {
+                val c = kotlin.math.cos(yaw); val si = kotlin.math.sin(yaw)
+                val nx = px * c - py * si; val ny = px * si + py * c
+                px = nx; py = ny
+            }
+            val k = dist / rd.range
+            val rr = s / 2f * 0.92f
+            val bx = (px / (dist.coerceAtLeast(1e-4f))) * rr * k
+            val by = (py / (dist.coerceAtLeast(1e-4f))) * rr * k
+            val size = s * 0.075f
+            r.rect(ox + bx, oy + by, size, size, rd.dotColor, 1, ppu)
         }
     }
 

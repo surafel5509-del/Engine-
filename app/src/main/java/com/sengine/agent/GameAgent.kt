@@ -186,7 +186,7 @@ self/transform: x, y, z, rotation, rotX, rotY, scaleX, scaleY, vx, vy, vz, name,
   distanceTo(o), setProp(Component,Prop,value), getProp(Component,Prop), burst(n), playAnim(name), playModelAnim(name).
 input: axisX, axisY, axis2X, axis2Y (aim stick), lookX, lookY, a, b, aDown, bDown, button(id), buttonDown(id), touching, tapped, touchX, touchY,
   setControls(preset), showControls(bool).
-scene: find(name), findAll(tag), count(tag), nearest(tag,x,y), spawn(templateName,x,y[,z]), load(sceneName), shake(amount), raycast(ox,oy,oz,dx,dy,dz,max).
+scene: find(name), findAll(tag), count(tag), nearest(tag,x,y), spawn(templateName,x,y[,z]), load(sceneName), shake(amount), radialForce(x,y,z,radius,force) (explosions/force fields), raycast(ox,oy,oz,dx,dy,dz,max).
 ui: setText(name,text), show(name), hide(name), setProgress(name,0..1). audio: play(file.wav,vol,pitch), playMusic(file.song,vol), stopMusic().
 storage: get(key,default), getNumber(key,default), set(key,value). time: time, deltaTime. Helpers: log, random(a,b), randomInt, clamp, lerp,
   distance, angleTo, chance(p), pick(arr), after(sec,fn), every(sec,fn), formatTime(s).

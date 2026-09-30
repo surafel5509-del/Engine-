@@ -13,7 +13,7 @@ object HelpContent {
 S Engine is a complete 2D + 3D game engine and editor that runs entirely on your phone. You build scenes, write scripts (JavaScript) or blueprints, make music, model and animate 3D objects, design UI and controllers, then export a real installable APK.
 
 ## Your first game in 5 minutes
-- On the Projects screen tap New Project and pick a template (Platformer, Space Shooter, 3D Demo, Racing, MiniCraft...).
+- On the Projects screen tap New Project and pick a template (8 complete sample games, Empty 2D / Empty 3D, Platformer, 3D Demo, Physics Sandbox...).
 - The editor opens: Hierarchy on the left, the Scene view in the middle, the Inspector on the right, Console/Assets at the bottom.
 - Press Play (green triangle) to run the game inside the editor. Press Stop to return — every change made while playing is reverted.
 - Select an object, change its properties in the Inspector, press Play again.
@@ -25,7 +25,7 @@ S Engine is a complete 2D + 3D game engine and editor that runs entirely on your
 - Long-press any toolbar icon to see what it does.
 
 ## Learn by example
-The four sample games (Top-down Shooter, Dead Zone, Racing, MiniCraft) are complete and open-source inside the app: create them from the templates and read their scripts.
+The eight sample games (Crystal Caverns, Slice Master, Iron Guard, Sky Harbor, Zombie Garage, Dungeon Quest, Strike Force and the Open World 2D sample) are complete and open-source inside the app: create them from the templates and read their scripts.
 """),
         Topic("editor", "Editor Tour", "layers", """
 # The Editor
@@ -243,7 +243,7 @@ vec4 effect(vec4 color, vec2 uv) {
 ```
 Uniforms: uTime, uParam (self.setShaderParam), uTex, uUseTex, uColor, uResolution. Assign to SpriteRenderer/MeshRenderer Shader, or to a camera's Post FX = Custom Shader. The Asset Store has ready shaders (water, hologram, dissolve, outline, pixelate, CRT, toon...).
 """),
-        Topic("voxel", "Voxel Worlds (MiniCraft)", "mountain", """
+        Topic("voxel", "Voxel Worlds", "mountain", """
 # Voxel Worlds
 Add a VoxelWorld component for Minecraft-style worlds: size, seed, terrain height, trees, water level. Blocks: grass, dirt, stone, sand, water, wood, leaves, planks, brick, glass, cobblestone, snow, bedrock, gold.
 
@@ -252,7 +252,7 @@ var hit = voxel.raycast(cam.x, cam.y, cam.z, f.x, f.y, f.z, 6);
 if (hit) voxel.setBlock(hit.x, hit.y, hit.z, 0);   // break
 voxel.save("world1"); voxel.load("world1");
 ```
-Rigidbody3D objects collide with blocks. See the MiniCraft sample for a complete builder game with hotbar, day/night and saving.
+Rigidbody3D objects collide with blocks. See the Native World template for a complete open world, or the Block World asset pack for voxel sounds, textures and a tree model.
 """),
         Topic("save", "Saving Data", "save", """
 # Saving
@@ -299,11 +299,15 @@ Run it before every build.
 """),
         Topic("samples", "Sample Games", "trophy", """
 # Sample games
-All four are made with S Engine only (scenes, scripts, UI, controls, music) — create them from New Project → templates and study or remix them.
-- Top-down Shooter — 3 levels, enemy waves, boss fight, pickups, menu, HUD, pause, level select, high score.
-- Dead Zone (2D zombies) — endless waves, auto-aim, pistol/shotgun, reloading, ammo pickups, high score.
-- Racing — 3D car racing with 2 maps × 3 roads, AI opponents with waypoints and rubber-banding, laps, countdown, positions, nitro, settings and a racing controller.
-- MiniCraft — 3D voxel builder: first-person look pad, break/place blocks, hotbar, day/night cycle, world saving.
+All eight are made with S Engine only (scenes, scripts, UI, controls, music) — create them from New Project → templates and study or remix them.
+- Crystal Caverns (2D platformer) — 3 levels, gems, bats, slimes and golems, spikes, moving platforms, checkpoints, stars and saves.
+- Slice Master (2D arcade) — swipe to slice, combos, bombs, lives, Classic + 60-second Frenzy modes.
+- Iron Guard (2D tower defense) — build/upgrade/sell arrow, cannon and frost towers, 10 waves, bosses, two maps, radar.
+- Sky Harbor (3D flight) — seaplane deliveries over an archipelago, boost rings, fuel, storms, sunset sky.
+- Zombie Garage (3D vehicle combat) — drive the battle pickup, roadkill hordes, roof turret, wave shop with upgrades.
+- Dungeon Quest (3D action RPG) — sword combat, dash, skeletons, blade traps, chests, 3 soul flames, Lich boss, XP levels.
+- Strike Force (3D FPS) — desert compound + night raid, line-of-sight AI, 3 weapons, grenades, exploding barrels.
+- Open World 2D (open sample) — small explorable meadow with chopping, an NPC, building and a day/night cycle; the scripts are the tutorial.
 """),
         Topic("faq", "Troubleshooting & FAQ", "help", """
 # FAQ

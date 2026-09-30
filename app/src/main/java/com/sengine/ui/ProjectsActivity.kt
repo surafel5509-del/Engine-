@@ -93,7 +93,7 @@ class ProjectsActivity : AppCompatActivity() {
         body.addView(hero, lp(MATCH, WRAP).margins(dp(20), dp(14), dp(20), dp(4)))
         body.addView(sectionHeader("gamepad", "SAMPLE GAMES — made with S Engine").apply { setPadding(dp(20), dp(14), dp(20), dp(6)) })
         val games = hbox().apply { setPadding(dp(14), 0, dp(14), dp(4)) }
-        val gameIcons = listOf("target" to 0xFF2563EB.toInt(), "fire" to 0xFFDC2626.toInt(), "car" to 0xFFF59E0B.toInt(), "cube" to 0xFF65A30D.toInt(), "tank" to 0xFF4D7C0F.toInt(), "shield" to 0xFF57534E.toInt(), "star" to 0xFF7C3AED.toInt())
+        val gameIcons = listOf("star" to 0xFF0E9BD8.toInt(), "target" to 0xFFE11D48.toInt(), "shield" to 0xFF16A34A.toInt(), "rocket" to 0xFF2563EB.toInt(), "car" to 0xFF8BC34A.toInt(), "sparkle" to 0xFF7C3AED.toInt(), "fire" to 0xFFDC2626.toInt(), "tree" to 0xFF059669.toInt())
         com.sengine.project.games.Games.templates.forEachIndexed { i, t ->
             val c = vbox().apply { background = round(C.PANEL, dp(14).toFloat()); setPadding(dp(12), dp(12), dp(12), dp(12)) }
             val ic = android.widget.ImageView(this).apply {
@@ -122,8 +122,8 @@ class ProjectsActivity : AppCompatActivity() {
         if (!prefs.getBoolean("seeded", false)) {
             prefs.edit().putBoolean("seeded", true).apply()
             if (ProjectManager.list(this).isEmpty()) {
-                ProjectManager.create(this, "Platformer Demo", Templates.all[1])
-                ProjectManager.create(this, "Space Shooter", Templates.all[2])
+                ProjectManager.create(this, "Platformer Demo", Templates.all.first { it.name == "Platformer Demo" })
+                ProjectManager.create(this, "Space Shooter", Templates.all.first { it.name == "Space Shooter" })
             }
         }
     }

@@ -11,8 +11,8 @@ android {
         applicationId = "com.sengine.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "5.0.0"
+        versionCode = 6
+        versionName = "7.0.0"
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti")

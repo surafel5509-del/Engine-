@@ -16,7 +16,8 @@ object ModelStudio {
 
     val AUTO_ANIMATIONS: List<String> by lazy {
         val native: List<String> = try { if (available) NativeScripts.nAutoAnimationKinds().split(',').filter { it.isNotBlank() } else emptyList() } catch (_: Throwable) { emptyList() }
-        native.ifEmpty { listOf("Idle", "Walk", "Run", "Jump", "Wave", "Punch", "Dance", "Death", "Celebrate", "Crouch", "Spin", "Bounce", "Hover", "Shake", "Swing", "Pulse") }
+        (native.ifEmpty { listOf("Idle", "Walk", "Run", "Jump", "Wave", "Punch", "Dance", "Death", "Celebrate", "Crouch", "Spin", "Bounce", "Hover", "Shake", "Swing", "Pulse") }) +
+            AutoAnimator.ALL_KINDS.filter { k -> (native.ifEmpty { listOf("Idle", "Walk", "Run", "Jump", "Wave", "Punch", "Dance", "Death", "Celebrate", "Crouch") }).none { it.equals(k, true) } }
     }
 
     private fun need() { if (!available) throw IllegalStateException("The native engine library (libsengine.so) is not available") }
@@ -96,17 +97,23 @@ object ModelStudio {
     // ---------------------------------------------------------------- auto animation
     /** Generates (or replaces) a clip named [kind] for the model's current part hierarchy. */
     fun autoAnimate(m: SModel, kind: String, length: Float = 0f): SClip {
-        need()
-        val names = m.parts.map { it.name }.toTypedArray()
-        val parents = IntArray(m.parts.size) { m.parts[it].parent }
-        val rest = FloatArray(m.parts.size * 9)
-        m.parts.forEachIndexed { i, p -> p.pos.copyInto(rest, i * 9); p.rot.copyInto(rest, i * 9 + 3); p.scale.copyInto(rest, i * 9 + 6) }
-        val (mn, mx) = m.bounds()
-        val json = NativeScripts.nAutoAnimate(kind, names, parents, rest, (mx[1] - mn[1]).coerceAtLeast(0.01f), length)
-        val clip = SClip.fromJson(JSONObject(json))
-        val i = m.clips.indexOfFirst { it.name.equals(clip.name, true) }
-        if (i >= 0) m.clips[i] = clip else m.clips += clip
-        return clip
+        // Native kernel first for its built-in kinds; the Kotlin AutoAnimator covers every other
+        // creature / vehicle / prop kind (and acts as the fallback when libsengine is unavailable).
+        if (available) {
+            try {
+                val names = m.parts.map { it.name }.toTypedArray()
+                val parents = IntArray(m.parts.size) { m.parts[it].parent }
+                val rest = FloatArray(m.parts.size * 9)
+                m.parts.forEachIndexed { i, p -> p.pos.copyInto(rest, i * 9); p.rot.copyInto(rest, i * 9 + 3); p.scale.copyInto(rest, i * 9 + 6) }
+                val (mn, mx) = m.bounds()
+                val json = NativeScripts.nAutoAnimate(kind, names, parents, rest, (mx[1] - mn[1]).coerceAtLeast(0.01f), length)
+                val clip = SClip.fromJson(JSONObject(json))
+                val i = m.clips.indexOfFirst { it.name.equals(clip.name, true) }
+                if (i >= 0) m.clips[i] = clip else m.clips += clip
+                return clip
+            } catch (_: Throwable) { /* fall through to the Kotlin generator */ }
+        }
+        return AutoAnimator.generate(m, kind, length)
     }
 }
 

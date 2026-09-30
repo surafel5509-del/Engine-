@@ -117,6 +117,15 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         }
     }
 
+    /** Calls [fname](arg1, arg2) on every running script that defines it (v7: onSlider / onToggle). */
+    fun broadcast(fname: String, arg1: Any?, arg2: Any?) {
+        if (cx == null) return
+        for (inst in instances.toList()) {
+            if (inst.failed || !inst.started || inst.go.destroyed || !inst.go.isActiveInHierarchy()) continue
+            if (if (inst.isNative) hasNative(inst, fname) else inst.scope!!.get(fname, inst.scope) is Function) call(inst, fname, arg1, arg2)
+        }
+    }
+
     fun newArray(items: List<Any?>): Scriptable? {
         val c = cx ?: return null
         val g = global ?: return null

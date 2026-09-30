@@ -98,6 +98,33 @@ internal object GameKit {
             it.add(UIProgress().also { b -> b.width = w; b.height = h; b.fillColor = fill.toInt(); b.anchor = anchor; b.value = value })
         }
 
+    /** v7 slider (settings screens). Scripts receive onSlider(name, value). */
+    fun slider(s: Scene, name: String, x: Float, y: Float, w: Float = 4f, fill: Long = 0xFF4C8DFF, parent: GameObject? = null, anchor: Int = 0, value: Float = 0.7f, action: String = ""): GameObject =
+        obj(s, name, x, y, parent = parent).also {
+            it.order = 215
+            it.add(com.sengine.engine.core.UISlider().also { sl ->
+                sl.width = w; sl.height = 0.42f; sl.fillColor = fill.toInt(); sl.anchor = anchor; sl.value = value; sl.action = action
+            })
+        }
+
+    /** v7 toggle / checkbox (settings screens). Scripts receive onToggle(name, checked). */
+    fun toggle(s: Scene, name: String, x: Float, y: Float, size: Float = 0.55f, on: Long = 0xFF57D16A, parent: GameObject? = null, anchor: Int = 0, checked: Boolean = false, style: Int = 0, action: String = ""): GameObject =
+        obj(s, name, x, y, parent = parent).also {
+            it.order = 215
+            it.add(com.sengine.engine.core.UIToggle().also { tg ->
+                tg.width = size; tg.onColor = on.toInt(); tg.anchor = anchor; tg.checked = checked; tg.style = style; tg.action = action
+            })
+        }
+
+    /** v7 minimap radar that plots live objects by tag around the player. */
+    fun radar(s: Scene, name: String, x: Float, y: Float, size: Float = 2.2f, track: String, range: Float = 40f, anchor: Int = BR, dot: Long = 0xFFFF5C6C, parent: GameObject? = null): GameObject =
+        obj(s, name, x, y, parent = parent).also {
+            it.order = 205
+            it.add(com.sengine.engine.core.UIRadar().also { r ->
+                r.size = size; r.track = track; r.range = range; r.anchor = anchor; r.dotColor = dot.toInt()
+            })
+        }
+
     fun darker(c: Long): Long {
         fun ch(sh: Int) = (((c shr sh) and 0xFF) * 3 / 4)
         return (c and 0xFF000000) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)

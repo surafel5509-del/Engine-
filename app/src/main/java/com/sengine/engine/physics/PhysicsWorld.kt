@@ -1,7 +1,9 @@
 package com.sengine.engine.physics
 
 import com.sengine.engine.core.Collider2D
+import com.sengine.engine.core.DistanceJoint2D
 import com.sengine.engine.core.GameObject
+import com.sengine.engine.core.RevoluteJoint2D
 import com.sengine.engine.core.Rigidbody2D
 import com.sengine.engine.core.Scene
 import kotlin.math.abs
@@ -41,6 +43,7 @@ class PhysicsWorld {
     private var prevTriggers = HashSet<Long>()
 
     fun reset() {
+        revPins.clear()
         accumulator = 0f
         prevContacts = HashSet(); prevTriggers = HashSet()
     }
@@ -98,6 +101,9 @@ class PhysicsWorld {
                 val b = bodies[j]
                 if (a.invMass == 0f && b.invMass == 0f && !a.col.isTrigger && !b.col.isTrigger) continue
                 val m = collide(a, b) ?: continue
+                // v7 one-way platforms: only solid when approached from above (normal along +Y for the dynamic body)
+                if (a.invMass == 0f && b.invMass != 0f && a.col.oneWay && m.ny < 0.5f) continue
+                if (b.invMass == 0f && a.invMass != 0f && b.col.oneWay && m.ny > -0.5f) continue
                 val key = pairKey(a.go.id, b.go.id)
                 if (a.col.isTrigger || b.col.isTrigger) {
                     triggers.add(key)
@@ -116,6 +122,83 @@ class PhysicsWorld {
         }
         prevContacts = contacts
         prevTriggers = triggers
+        solveJoints2D(scene, dt)
+    }
+
+    // ================================================================================ joints (v7)
+    private val revPins = HashMap<Int, FloatArray>()
+
+    private fun bodyOf(scene: Scene, go: GameObject): Body? {
+        val col = go.get<Collider2D>() ?: return null
+        val b = Body(go, go.get(), col); refresh(b); return b
+    }
+
+    /** Distance joints (ropes, pendulums) and revolute joints (wheels, swings, ragdoll pivots). */
+    private fun solveJoints2D(scene: Scene, dt: Float) {
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val dj = go.get<DistanceJoint2D>()
+            if (dj != null && dj.enabled) {
+                val other = scene.find(dj.target)
+                if (other != null) {
+                    val a = go.computeWorld(); val b = other.computeWorld()
+                    val dx = b.tx - a.tx; val dy = b.ty - a.ty
+                    val dist = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1e-5f)
+                    val err = dist - dj.distance
+                    if (abs(err) > 1e-4f) {
+                        val nx = dx / dist; val ny = dy / dist
+                        val k = dj.stiffness * 60f * dt
+                        val ra = go.get<Rigidbody2D>(); val rb = other.get<Rigidbody2D>()
+                        val wa = ra != null && ra.bodyType == 0; val wb = rb != null && rb.bodyType == 0
+                        val split = (if (wa) 1f else 0f) + (if (wb) 1f else 0f)
+                        if (split > 0f) {
+                            val ca = err / dist * k * (if (wa) 1f / split else 0f)
+                            val cb = err / dist * k * (if (wb) 1f / split else 0f)
+                            if (wa) moveWorld(go, nx * ca, ny * ca)
+                            if (wb) moveWorld(other, -nx * cb, -ny * cb)
+                            if (wa && ra != null) { ra.vx += nx * err * 4f * k; ra.vy += ny * err * 4f * k }
+                            if (wb && rb != null) { rb.vx -= nx * err * 4f * k; rb.vy -= ny * err * 4f * k }
+                        }
+                    }
+                }
+            }
+            val rj = go.get<RevoluteJoint2D>()
+            if (rj != null && rj.enabled) {
+                val rb = go.get<Rigidbody2D>()
+                if (rb != null && rb.bodyType == 0) {
+                    val key = System.identityHashCode(rj)
+                    val a = go.computeWorld()
+                    val px = a.tx + (a.a * rj.pivotX + a.c * rj.pivotY)
+                    val py = a.ty + (a.b * rj.pivotX + a.d * rj.pivotY)
+                    val anchor = revPins.getOrPut(key) { floatArrayOf(px, py) }
+                    val other = scene.find(rj.target)
+                    // keep the pivot at its anchor: remove radial velocity so the body orbits freely
+                    val dx = a.tx - anchor[0]; val dy = a.ty - anchor[1]
+                    val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                    if (dist > 1e-4f) {
+                        val nx = dx / dist; val ny = dy / dist
+                        val vr = rb.vx * nx + rb.vy * ny
+                        rb.vx -= nx * vr; rb.vy -= ny * vr
+                        // spring back if drifted
+                        rb.vx -= nx * dist * 30f * dt; rb.vy -= ny * dist * 30f * dt
+                    }
+                    if (rj.motorSpeed != 0f) go.rotation += rj.motorSpeed * dt
+                    if (other != null) {
+                        val orb = other.get<Rigidbody2D>()
+                        if (orb != null && orb.bodyType == 0 && rj.motorSpeed != 0f && rj.maxTorque > 0f) {
+                            // drive the connected body tangentially (belt / wheel on axle)
+                            val ox = other.computeWorld()
+                            val tdx = ox.tx - a.tx; val tdy = ox.ty - a.ty
+                            val tl = kotlin.math.sqrt(tdx * tdx + tdy * tdy).coerceAtLeast(1e-5f)
+                            val tx = -tdy / tl; val ty = tdx / tl
+                            val sgn = if (rj.motorSpeed > 0f) 1f else -1f
+                            orb.vx += tx * rj.motorSpeed * 0.03f * rj.maxTorque * sgn * dt * 60f * 0.02f
+                            orb.vy += ty * rj.motorSpeed * 0.03f * rj.maxTorque * sgn * dt * 60f * 0.02f
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun pairKey(a: Long, b: Long): Long {

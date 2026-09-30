@@ -8,6 +8,8 @@ import com.sengine.engine.core.GameObject
 import com.sengine.engine.core.ParticleEmitter
 import com.sengine.engine.core.Rigidbody2D
 import com.sengine.engine.core.SpriteRenderer
+import com.sengine.engine.core.UISlider
+import com.sengine.engine.core.UIToggle
 import com.sengine.engine.core.TextRenderer
 import org.mozilla.javascript.Context
 import kotlin.math.sqrt
@@ -166,6 +168,18 @@ class SObject(private val go: GameObject, private val engine: Engine, private va
     fun child(name: String): Any? = engine.scene.childrenOf(go).firstOrNull { it.name == name }?.let { sys.toJs(it) }
     fun destroy() { go.destroyed = true }
     fun hasComponent(type: String): Boolean = go.components.any { it.type.equals(type, true) }
+
+    // ------------------------------------------------------------------ v7 UI widgets & ragdoll
+    /** Value of a UISlider on this object (0..1), or -1 when it has none. */
+    fun getValue(): Double = go.getAny<UISlider>()?.value?.toDouble() ?: -1.0
+    fun setValue(v: Double) { go.getAny<UISlider>()?.let { it.value = v.toFloat().coerceIn(0f, 1f) } }
+    /** Checked state of a UIToggle on this object. */
+    fun isChecked(): Boolean = go.getAny<UIToggle>()?.checked ?: false
+    fun setChecked(v: Boolean) { go.getAny<UIToggle>()?.let { it.checked = v } }
+    /** Turns this object (ideally a rigged character model) into a physics ragdoll. */
+    fun ragdoll() { engine.spawnRagdoll(go) }
+    /** Explosion-style knockback impulse for ragdolls / rigidbodies around a point. */
+    fun explode(force: Double) { engine.spawnRagdoll(go, force.toFloat()) }
     fun setComponentEnabled(type: String, v: Boolean) {
         go.components.filter { it.type.equals(type, true) }.forEach { it.enabled = v }
     }
@@ -314,6 +328,9 @@ class SScene(private val engine: Engine, private val sys: ScriptSystem) {
     }
     fun spawn(name: String, x: Double, y: Double, z: Double): Any? = spawnGo(name, x.toFloat(), y.toFloat(), z.toFloat())?.let { sys.toJs(it) }
     fun shake(amount: Double) = engine.shake(amount.toFloat())
+    /** v7 explosion / force field: shoves dynamic 3D bodies inside [radius]; negative force pulls them in. */
+    fun radialForce(x: Double, y: Double, z: Double, radius: Double, force: Double) =
+        engine.physics3D.radialForce(engine.scene, x.toFloat(), y.toFloat(), z.toFloat(), radius.toFloat(), force.toFloat())
     /** 3D raycast against Collider3D objects; returns the first object hit or null. */
     fun raycast(ox: Double, oy: Double, oz: Double, dx: Double, dy: Double, dz: Double, maxDist: Double): Any? {
         val l = Math.sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-9)

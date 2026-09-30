@@ -1,8 +1,21 @@
-# S Engine — v6 Studio Edition #
+# S Engine — v7 Ultimate Studio #
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 
 > Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
+
+## 🚀 v7 Ultimate Studio (this release) — versionName 7.0.0 (code 6)
+
+| Feature | What you get |
+|---|---|
+| **Universal Import** | *Assets → Import Files* selects **any number of files of any size**; *Import Folder* picks a whole directory tree. **3D models convert to editable .smodel**: OBJ (+MTL colours), STL (ascii+binary), PLY (ascii+binary), glTF/GLB (embedded or external .bin), DAE/Collada (Z_UP handled), FBX text; unsupported formats (blend, 3DS, FBX binary, RAR4/7z) are stored as-is with a clear note instead of failing. **Archives extract on import**: ZIP, TAR, TAR.GZ/GZ (incl. GNU long names) and RAR5 stored entries, with a zip-slip guard. Everything else — textures, sounds, scripts, huge raw files — is streamed into the project unchanged. A summary log lands in the console |
+| **Blender-style Model Editor** | On top of the v6 native bevel / loop cut / bridge / PolyGroups / UV unwrapping, v7 adds a pure-Kotlin sculpt kit: **Sculpt brushes** (Pull, Inflate, Smooth, Flatten, Pinch) with smooth falloff, **Array** and **True mirror** modifiers, and 7 new primitives (**Icosphere, Torus Knot, Spring, Wedge, Diamond, Pipe, Stairs**) |
+| **3D materials & texturing** | **Materials3D**: 40 one-tap PBR presets (metals, plastics, wood, marble, concrete, brick, sand, grass, snow, ice, glass, water, lava, neon, hologram, gems, skin/fur/scale/bone) that set colour, metallic, roughness, emission and texture together. MeshRenderer exposes PBR + normal maps per part; the Texture Studio bakes **normal maps** for any texture |
+| **Auto-Animation for everything** | One tap generates clip sets **without any native library** (works in tests and on every device): humanoids, quadrupeds, birds, fish, vehicles and generic props. Name-heuristic part mapping (hips/spine/tail/wing/fin/wheel/upperarm…) drives archetypes: idle/walk/run/jump/wave/punch/dance/death/celebrate/sit/hover/bank/roll/spin/bounce/swoop/paddle/flagspin etc. Native auto-animation stays as the first choice with the Kotlin path as fallback |
+| **Physics upgrades** | 3D: **capsule colliders** (spine closest-point tests vs spheres, boxes and capsules), capsule raycasts, **Joint3D** (fixed / spring / hinge with motor + break force), **CharacterController3D** (slope limit, step offset, air control), **Ragdoll** component with instant world-space shatter into linked rigid-body pieces. 2D: one-way platforms, **DistanceJoint2D**, **RevoluteJoint2D** with motors, wheel joints helpers |
+| **Real game UI kit** | New components **UISlider** (drag, `onSlider(name,0..1)`), **UIToggle** (checkbox + switch styles, `onToggle(name,bool)`) and **UIRadar** (live minimap tracking objects by tag, rotates with the camera). All render in-engine, respond to touch, work in the **UI Creator** (palette + layers + bounds) and accept the same mini-language actions (`call:`, `scene:`…) |
+| **8 new-generation sample games** | **Crystal Caverns** (2D platformer: 3 levels, gems, bats/slimes/golems, spikes, moving platforms, checkpoints, star ratings + saves), **Slice Master** (fruit-slicing arcade with combos, bombs, lives, Classic + Frenzy), **Iron Guard** (tower defense: 3 tower types, build/upgrade/sell, 10 waves + bosses, 2 maps, radar), **Sky Harbor** (3D seaplane deliveries: banking flight model, cargo jobs, boost rings, fuel, storms, sunset), **Zombie Garage** (3D vehicle combat: roadkill, roof turret, wave shop with repairs/armor/ammo/turret), **Dungeon Quest** (3D ARPG: sword + dash, skeletons, blade traps, chests, 3 soul flames, Lich boss, XP levels), **Strike Force** (kept 3D FPS) and **Open World 2D** (the open, heavily commented sample). Plus **Empty 2D** and **Empty 3D** starter templates. Every game ships menus, HUD, pause, saves, music and a splash screen |
+| **Splash screens everywhere** | The engine itself opens with an animated **S Engine splash** (scaling logo + loading bar), and every built game — and every sample — starts with the same Unity-style splash before the menu (tap to skip) |
 
 ## 🎬 v6 Model & Animation Studio (round 1)
 
@@ -40,13 +53,8 @@ The 3D Model Editor is now a small Blender-style studio. The heavy mesh work run
 | **New games** | **Strike Force** (3D FPS: day + night missions, soldier AI with line of sight, rifle / shotgun / pistol with ADS, recoil and headshots, grenades, exploding barrels, regenerating health, extraction) and **Iron Tanks** (2D tank battle: aiming turret, destructible walls, rivers, bushes, 3 enemy types, HQ defence, HE shells, power-ups, 3 missions with stars) |
 | **Engine** | Scripts start before their first physics event (no lost triggers), `scene.find()` prefers live objects, `raycastHit(..., ignore)`, `findInRadius3`, FPS control layout |
 
-### Sample games (all complete: menus, settings, HUD, sounds, music, saves)
-* **Sky Strike** – 2D shoot 'em up with 3 levels, bosses and stars
-* **Dead Zone** – 2D twin-stick zombie survival with waves, weapons and upgrades
-* **Iron Tanks** – 2D top-down tank battle *(new)*
-* **Turbo Rally** – 3D racing, 2 maps × 3 roads, AI drivers
-* **MiniCraft** – 3D voxel sandbox
-* **Strike Force** – 3D first-person shooter *(new)*
+### Sample games (v4–v6 history, superseded by the v7 roster above)
+* ~~Sky Strike / Dead Zone / Turbo Rally / MiniCraft / Iron Tanks~~ — replaced in v7 by Crystal Caverns, Slice Master, Iron Guard, Sky Harbor, Zombie Garage, Dungeon Quest, Strike Force and Open World 2D
 
 ## ✨ Ultimate Edition (v2)
 

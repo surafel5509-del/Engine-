@@ -72,11 +72,19 @@ class Project(val dir: File) {
 
     fun assetFile(n: String) = File(assetsDir, n)
 
-    fun listAssets(kind: AssetKind? = null): List<String> =
-        (assetsDir.listFiles() ?: emptyArray())
-            .filter { it.isFile && (kind == null || AssetKind.of(it.name) == kind) }
-            .map { it.name }
-            .sortedWith(compareBy({ AssetKind.of(it)?.ordinal ?: 9 }, { it.lowercase() }))
+    /** All asset files (sub-folders included, e.g. from folder / archive imports), as relative paths. */
+    fun listAssets(kind: AssetKind? = null): List<String> {
+        val out = ArrayList<String>()
+        fun walk(dir: File, prefix: String) {
+            val kids = dir.listFiles() ?: return
+            for (f in kids) {
+                if (f.isDirectory) walk(f, "$prefix${f.name}/")
+                else if (kind == null || AssetKind.of(f.name) == kind) out.add("$prefix${f.name}")
+            }
+        }
+        walk(assetsDir, "")
+        return out.sortedWith(compareBy({ AssetKind.of(it)?.ordinal ?: 9 }, { it.lowercase() }))
+    }
 
     fun readAsset(n: String): String? = assetFile(n).takeIf { it.exists() }?.readText()
 
