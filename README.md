@@ -15,7 +15,7 @@ The biggest content and workflow release yet: a **pro asset system**, a **proced
 | **Asset Hub & browser** | The editor's bottom panel is now a **docked Unity-style asset browser**: category chips with live counts, instant search, a 5-column thumbnail grid with async image loading, favourites, tags and an `assets.index.json` meta file that survives renames. Long-press any asset for assign / open / instantiate / favourite / rename / duplicate / export / delete |
 | **File & ZIP import** | **Import Files** (multi-select) and **Import ZIP** buttons pull anything from your device straight into the project — folders inside zips are preserved, path-traversal is blocked, name clashes auto-suffix, and when a zip contains numbered image frames (`slime_0.png`, `slime_1.png`, …) the Hub **assembles a packed sprite sheet plus a ready `.anim` clip automatically**. Any selection exports back out as a ZIP |
 | **Prefabs** | Capture any object **with its whole child hierarchy** to a reusable `.prefab`, then instantiate it anywhere — names uniquified, transforms kept parent-local, textures/components intact |
-| **Editor layout** | Assets tab is now the **first** tab in a taller 176 dp bottom panel; the console/browser toggle remembers where you were; Import/Store actions sit in the tab bar |
+| **Editor layout** | Assets tab is now the **first** tab in a taller 176 dp bottom panel; the console/browser toggle remembers where you were; Import/Store actions sit in the tab bar. New **Unity-style menu bar** (File / Edit / GameObject / Component / Assets / Tools / Help with full dropdowns) and a **floating scene-view tool strip** (hand / move / rotate / scale / 2D-3D) on the viewport's left edge, hidden during play |
 
 ## 🚀 v7 Pro Performance Edition
 
