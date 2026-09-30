@@ -502,7 +502,7 @@ object Matrix {
     }
 
     @JvmStatic fun perspectiveM(m: FloatArray, offset: Int, fovy: Float, aspect: Float, zNear: Float, zFar: Float) {
-        val f = 1.0f / Math.tan((fovy * (Math.PI / 360.0)).toFloat())
+        val f = (1.0 / Math.tan(fovy * Math.PI / 360.0)).toFloat()
         val nf = 1.0f / (zNear - zFar)
         setIdentityM(m, offset)
         m[offset] = f / aspect

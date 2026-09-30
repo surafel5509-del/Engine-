@@ -12,13 +12,13 @@ open class Context {
         const val ALARM_SERVICE = "alarm"
         const val NOTIFICATION_SERVICE = "notification"
     }
-    fun getAssets(): Any? = null
-    fun getResources(): Any? = null
-    fun getFilesDir(): java.io.File = java.io.File("/tmp/sengine-files")
-    fun getCacheDir(): java.io.File = java.io.File("/tmp/sengine-cache")
+    val assets: android.content.res.AssetManager get() = android.content.res.AssetManager()
+    val resources: Any? get() = null
+    val filesDir: java.io.File get() = java.io.File("/tmp/sengine-files")
+    val cacheDir: java.io.File get() = java.io.File("/tmp/sengine-cache")
     fun getExternalFilesDir(type: String?): java.io.File = java.io.File("/tmp/sengine-external")
-    fun getPackageName(): String = "com.sengine"
+    val packageName: String get() = "com.sengine"
     fun getSharedPreferences(name: String?, mode: Int): Any? = null
     fun getSystemService(name: String?): Any? = null
-    fun getApplicationContext(): Context = this
+    val applicationContext: Context get() = this
 }

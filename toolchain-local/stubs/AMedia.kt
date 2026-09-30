@@ -48,10 +48,10 @@ class SoundPool(maxStreams: Int, streamType: Int, srcQuality: Int) {
 class ToneGenerator(streamType: Int, volume: Int) {
     companion object {
         const val STREAM_MUSIC = 3
-        const val PROP_BEEP = 40
-        const val PROP_BEEP2 = 41
-        const val PROP_ERROR = 44
-        const val PROP_ACK = 45
+        const val TONE_PROP_BEEP = 40
+        const val TONE_PROP_BEEP2 = 41
+        const val TONE_PROP_ERROR = 44
+        const val TONE_PROP_ACK = 45
     }
     fun startTone(toneType: Int): Boolean = true
     fun startTone(toneType: Int, durationMs: Int): Boolean = true
@@ -70,14 +70,13 @@ class MediaPlayer {
     fun setDataSource(path: String?) {}
     fun setDataSource(fd: FileDescriptor?, offset: Long = 0, length: Long = 0) {}
     fun setAudioStreamType(streamType: Int) {}
-    fun setLooping(loop: Boolean) {}
-    fun isLooping(): Boolean = false
+    var isLooping: Boolean = false
     fun prepare() {}
     fun prepareAsync() {}
     fun start() {}
     fun pause() {}
     fun stop() {}
-    fun isPlaying(): Boolean = false
+    var isPlaying: Boolean = false
     fun seekTo(msec: Int) {}
     fun getDuration(): Int = 0
     fun getCurrentPosition(): Int = 0

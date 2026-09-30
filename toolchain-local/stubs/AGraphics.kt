@@ -1,13 +1,17 @@
 package android.graphics
 
-import com.sengine.engine.texture.PngEncoder
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
 import java.io.OutputStream
+import java.util.zip.CRC32
+import java.util.zip.Deflater
 
 /** Headless android.graphics: int-array-backed Bitmap, rasterizing Canvas, Paint, Path, etc. */
 
 enum class BitmapConfig { ALPHA_8, RGB_565, ARGB_4444, ARGB_8888 }
 
 class Bitmap private constructor(val width: Int, val height: Int, val config: BitmapConfig) {
+    class Config { companion object { val ALPHA_8 = BitmapConfig.ALPHA_8; val RGB_565 = BitmapConfig.RGB_565; val ARGB_4444 = BitmapConfig.ARGB_4444; val ARGB_8888 = BitmapConfig.ARGB_8888 } }
     val pixels = IntArray(width * height)
 
     enum class CompressFormat { JPEG, PNG, WEBP }
@@ -33,8 +37,34 @@ class Bitmap private constructor(val width: Int, val height: Int, val config: Bi
     fun compress(format: CompressFormat, quality: Int, stream: OutputStream): Boolean {
         val argb = IntArray(width * height)
         for (i in argb.indices) argb[i] = pixels[i]
-        stream.write(PngEncoder.encode(width, height, argb))
+        stream.write(pngBytes(width, height, argb))
         return true
+    }
+
+    private fun pngBytes(w: Int, h: Int, argb: IntArray): ByteArray {
+        val raw = ByteArray((w * 4 + 1) * h)
+        var k = 0
+        for (y in 0 until h) {
+            raw[k++] = 0
+            for (x in 0 until w) {
+                val c = argb[y * w + x]
+                raw[k++] = (c shr 16).toByte(); raw[k++] = (c shr 8).toByte(); raw[k++] = c.toByte(); raw[k++] = (c ushr 24).toByte()
+            }
+        }
+        val def = Deflater(6); def.setInput(raw); def.finish()
+        val z = ByteArrayOutputStream(); val buf = ByteArray(65536)
+        while (!def.finished()) { val n = def.deflate(buf); z.write(buf, 0, n) }
+        def.end()
+        val out = ByteArrayOutputStream()
+        out.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        fun chunk(type: String, data: ByteArray) {
+            val d = DataOutputStream(out)
+            d.writeInt(data.size); val t = type.toByteArray(Charsets.US_ASCII); d.write(t); d.write(data)
+            val crc = CRC32(); crc.update(t); crc.update(data); d.writeInt(crc.value.toInt())
+        }
+        val ihdr = ByteArrayOutputStream().also { DataOutputStream(it).apply { writeInt(w); writeInt(h); writeByte(8); writeByte(6); writeByte(0); writeByte(0); writeByte(0) } }
+        chunk("IHDR", ihdr.toByteArray()); chunk("IDAT", z.toByteArray()); chunk("IEND", ByteArray(0))
+        return out.toByteArray()
     }
 
     fun createBitmap(): Bitmap = createBitmap(this)
@@ -50,6 +80,11 @@ class Bitmap private constructor(val width: Int, val height: Int, val config: Bi
         @JvmStatic fun createBitmap(src: Bitmap): Bitmap {
             val b = Bitmap(src.width, src.height, src.config)
             System.arraycopy(src.pixels, 0, b.pixels, 0, src.pixels.size)
+            return b
+        }
+        @JvmStatic fun createBitmap(colors: IntArray, width: Int, height: Int, config: BitmapConfig): Bitmap {
+            val b = Bitmap(width.coerceAtLeast(1), height.coerceAtLeast(1), config)
+            for (y in 0 until b.height) for (x in 0 until b.width) b.pixels[y * b.width + x] = colors[y * width + x]
             return b
         }
         @JvmStatic fun createBitmap(src: Bitmap, x: Int, y: Int, w: Int, h: Int): Bitmap {
@@ -193,7 +228,9 @@ class Path {
     }
 }
 
-open class Shader()
+open class Shader() {
+    class TileMode { companion object { val CLAMP = TileMode(); val REPEAT = TileMode(); val MIRROR = TileMode() } }
+}
 class LinearGradient(x0: Float, y0: Float, x1: Float, y1: Float, color0: Int, color1: Int, tile: Shader.TileMode) : Shader() {
     constructor(x0: Float, y0: Float, x1: Float, y1: Float, colors: IntArray, positions: FloatArray?, tile: Shader.TileMode) : this(x0, y0, x1, y1, colors.firstOrNull() ?: 0, colors.lastOrNull() ?: 0, tile)
 }
@@ -222,6 +259,16 @@ class Typeface private constructor() {
 
 class Paint() {
     constructor(flags: Int) : this()
+
+    companion object {
+        const val ANTI_ALIAS_FLAG = 1
+        const val FILTER_BITMAP_FLAG = 2
+        const val DITHER_FLAG = 4
+        const val TEXT_ANTI_ALIAS_FLAG = 8
+        const val FAKE_BOLD_TEXT_FLAG = 16
+        const val UNDERLINE_TEXT_FLAG = 32
+        const val STRIKE_THRU_TEXT_FLAG = 64
+    }
 
     var color = -0x1000000
     var strokeWidth = 1f
@@ -256,6 +303,17 @@ class Paint() {
     fun ascent(): Float = -textSize
     fun descent(): Float = textSize * 0.2f
     fun setShadowLayer(radius: Float, dx: Float, dy: Float, color: Int) {}
+
+    class FontMetrics {
+        var top = 0f
+        var ascent = 0f
+        var descent = 0f
+        var bottom = 0f
+        var leading = 0f
+    }
+
+    private val fm = FontMetrics()
+    val fontMetrics: FontMetrics get() { fm.ascent = -textSize; fm.descent = textSize * 0.2f; fm.top = -textSize * 1.1f; fm.bottom = textSize * 0.3f; return fm }
 }
 
 /** Software canvas rasterizing into a Bitmap's pixel array. */
@@ -266,7 +324,7 @@ class Canvas {
     constructor() {}
     constructor(b: Bitmap) { bitmap = b }
 
-    fun setBitmap(b: Bitmap?) { bitmap = b }
+    @JvmName("attachBitmap") fun setBitmap(b: Bitmap?) { bitmap = b }
     val width: Int get() = bitmap?.width ?: 0
     val height: Int get() = bitmap?.height ?: 0
 
@@ -384,6 +442,10 @@ class Canvas {
                 if (fill) blend(x, y, p.color, p)
             }
     }
+
+    fun drawRoundRect(l: Float, t: Float, r: Float, b: Float, rx: Float, ry: Float, paint: Paint?) = drawRoundRect(RectF(l, t, r, b), rx, ry, paint)
+
+    fun drawPaint(paint: Paint?) {}
 
     fun drawRoundRect(rect: RectF, rx: Float, ry: Float, paint: Paint?) {
         val p = paint ?: return
