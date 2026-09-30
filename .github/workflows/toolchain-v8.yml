@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
   push:
     branches: [arena/01a0eea2-engine]
+    paths-ignore:
+      - "toolchain-local/**"
+      - "app/src/test/**"
 permissions:
   contents: write
 jobs:
@@ -17,20 +20,24 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Gather toolchain
+        if: always()
         run: |
           mkdir -p out/kotlinc out/jre
-          curl -sL -o kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
-          unzip -q kotlin.zip -d kotlin_dist
-          cp -r kotlin_dist/kotlinc/lib/* out/kotlinc/
-          # minimal runtime that can run the Kotlin compiler and the JVM tests
+          exec > >(tee out/log.txt) 2>&1
+          set -x
+          curl -fL -o kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip && \
+            unzip -q kotlin.zip -d kotlin_dist && cp -r kotlin_dist/kotlinc/lib/* out/kotlinc/ || echo "KOTLIN_FAILED"
           jlink --add-modules java.base,java.logging,java.xml,java.naming,java.management,java.sql,java.desktop,jdk.unsupported,jdk.zipfs,jdk.crypto.ec \
-                --strip-debug --no-header-files --no-man-pages --compress=2 --output out/jre
-          curl -sL -o out/org-json-20231013.jar https://repo1.maven.org/maven2/org/json/json/20231013/json-20231013.jar
-          curl -sL -o out/rhino-1.7.13.jar https://repo1.maven.org/maven2/org/mozilla/rhino/1.7.13/rhino-1.7.13.jar
-          curl -sL -o platform.zip https://dl.google.com/android/repository/platform-34_r02.zip || true
-          unzip -q platform.zip -d plat && cp plat/android-34/android.jar out/android-34.jar || true
-          du -sh out/*
+                --strip-debug --no-header-files --no-man-pages --compress=2 --output out/jre || \
+            jlink --add-modules java.base,java.logging,java.xml,java.management,jdk.unsupported,jdk.zipfs \
+                --strip-debug --no-header-files --no-man-pages --output out/jre || echo "JLINK_FAILED"
+          curl -fL -o out/org-json-20231013.jar https://repo1.maven.org/maven2/org/json/json/20231013/json-20231013.jar || echo "JSON_FAILED"
+          curl -fL -o out/rhino-1.7.13.jar https://repo1.maven.org/maven2/org/mozilla/rhino/1.7.13/rhino-1.7.13.jar || echo "RHINO_FAILED"
+          curl -fL -o platform.zip https://dl.google.com/android/repository/platform-34_r02.zip && \
+            unzip -q platform.zip -d plat && cp plat/android-34/android.jar out/android-34.jar || echo "ANDROIDJAR_FAILED"
+          ls -la out; du -sh out/* || true
       - name: Commit toolchain branch
+        if: always()
         run: |
           git config user.email "ci@sengine.local"
           git config user.name "sengine-ci"

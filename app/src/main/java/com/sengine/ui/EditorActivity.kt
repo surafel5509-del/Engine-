@@ -70,8 +70,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private lateinit var statsText: TextView
     private lateinit var consoleText: TextView
     private lateinit var consoleScroll: ScrollView
-    private lateinit var assetsRow: LinearLayout
-    private lateinit var assetsScroll: HorizontalScrollView
+    private lateinit var browser: AssetBrowserView
     private lateinit var hierarchyPanel: View
     private lateinit var inspectorPanel: View
     private lateinit var bottomPanel: LinearLayout
@@ -107,7 +106,23 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     }
 
     private val importLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) importAsset(uri)
+        if (uri != null) importFiles(listOf(uri))
+    }
+
+    private val importFilesLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) importFiles(uris)
+    }
+
+    private val importZipLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importZip(uri)
+    }
+
+    private var pendingAssetExport: List<String> = emptyList()
+    private val assetZipExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) try {
+            contentResolver.openOutputStream(uri)?.use { browser.hub.exportZip(pendingAssetExport, it) }
+            toast("Exported ${pendingAssetExport.size} asset(s)")
+        } catch (e: Exception) { toast("Export failed: ${e.message}") }
     }
 
     private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -300,9 +315,9 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         // ---- bottom panel
         bottomPanel = vbox().apply { setBackgroundColor(C.PANEL) }
         val tabs = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(4), dp(2), dp(4), dp(2)) }
-        tabConsole = button("Console", C.HEADER) { showTab(0) }.apply { textSize = 12f }
         tabAssets = button("Assets", C.HEADER) { showTab(1) }.apply { textSize = 12f }
-        tabs.addView(tabConsole); tabs.addView(tabAssets)
+        tabConsole = button("Console", C.HEADER) { showTab(0) }.apply { textSize = 12f }
+        tabs.addView(tabAssets); tabs.addView(tabConsole)
         tabs.addView(View(this), lp(0, 1, 1f))
         assetButtons = hbox()
         assetButtons.addView(button("+ Script") { newScriptDialog { refreshAssets(); openScript(it) } }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
@@ -314,9 +329,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         assetButtons.addView(button("+ Animation") { newAssetDialog("New Animation", "NewAnimation", "anim", { com.sengine.engine.anim.AnimationClip().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Song") { newAssetDialog("New Song", "Theme", "song", { MusicEditorActivity.newSongJson(it.substringBeforeLast('.')) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ 3D Model") { newAssetDialog("New 3D Model", "MyModel", "smodel", { ModelEditorActivity.newModelJson() }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Model") { importKind = AssetKind.MODEL; importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Image") { importKind = AssetKind.TEXTURE; importLauncher.launch(arrayOf("image/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Sound") { importKind = AssetKind.SOUND; importLauncher.launch(arrayOf("audio/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("Import Files") { importFilesLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("Import ZIP") { importZipLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         tabs.addView(assetButtons)
         tabs.addView(button("Clear", C.HEADER) { consoleText.text = "" }.apply { textSize = 12f })
         tabs.addView(button("▾", C.HEADER) { toggle(bottomContent) }.apply { textSize = 12f })
@@ -326,15 +340,14 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         consoleText = label("", 11f, 0xFFCFD2D6.toInt()).apply { typeface = Typeface.MONOSPACE; setPadding(dp(8), dp(4), dp(8), dp(4)); setTextIsSelectable(true) }
         consoleScroll = ScrollView(this).apply { addView(consoleText) }
         bottomContent.addView(consoleScroll)
-        assetsRow = hbox().apply { setPadding(dp(6), dp(6), dp(6), dp(6)) }
-        assetsScroll = HorizontalScrollView(this).apply { addView(assetsRow) }
-        bottomContent.addView(assetsScroll)
-        bottomPanel.addView(bottomContent, lp(MATCH, dp(112)))
+        browser = AssetBrowserView(this, project, BrowserCallbacks())
+        bottomContent.addView(browser)
+        bottomPanel.addView(bottomContent, lp(MATCH, dp(176)))
         root.addView(bottomPanel, lp(MATCH, WRAP))
 
         setContentView(root)
         setTool(Tool.MOVE)
-        showTab(0)
+        showTab(1)
         updateTitle()
     }
 
@@ -342,7 +355,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
     private fun showTab(i: Int) {
         consoleScroll.visibility = if (i == 0) View.VISIBLE else View.GONE
-        assetsScroll.visibility = if (i == 1) View.VISIBLE else View.GONE
+        browser.visibility = if (i == 1) View.VISIBLE else View.GONE
         assetButtons.visibility = if (i == 1) View.VISIBLE else View.GONE
         tabConsole.setTextColor(if (i == 0) C.ACCENT else C.DIM)
         tabAssets.setTextColor(if (i == 1) C.ACCENT else C.DIM)
@@ -585,11 +598,19 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private fun objectMenu(go: GameObject, anchor: View) {
         if (engine.mode != Engine.Mode.EDIT) { select(go.id); return }
         val pm = PopupMenu(this, anchor)
-        listOf("Rename", "Duplicate", "Delete", "Create Child", "Move Up", "Move Down", "Unparent", "Frame in View").forEach { pm.menu.add(it) }
+        listOf("Rename", "Duplicate", "Delete", "Create Child", "Move Up", "Move Down", "Unparent", "Frame in View", "Save as Prefab…").forEach { pm.menu.add(it) }
         pm.setOnMenuItemClickListener { item ->
             when (item.title) {
                 "Rename" -> renameDialog(go)
                 "Frame in View" -> controller.frame(go)
+                "Save as Prefab…" -> {
+                    synchronized(engine.lock) {
+                        val json = com.sengine.project.PrefabIO.capture(engine.scene, go)
+                        val file = com.sengine.project.PrefabIO.save(project, go.name.replace(Regex("[^A-Za-z0-9_\- ]"), "").ifBlank { "Prefab" }, json)
+                        toast("Saved prefab $file")
+                    }
+                    refreshAssets()
+                }
                 else -> {
                     history.record(state.selectedId)
                     var newSel = state.selectedId
@@ -760,11 +781,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
     // ================================================================== assets
     fun refreshAssets() {
-        if (!::assetsRow.isInitialized) return
-        assetsRow.removeAllViews()
-        val assets = project.listAssets()
-        if (assets.isEmpty()) assetsRow.addView(label("No assets yet. Create a script or import images / sounds.", 12f, C.DIM).apply { setPadding(dp(8), dp(20), 0, 0) })
-        for (name in assets) assetsRow.addView(assetCard(name), lp(dp(88), MATCH).margins(dp(3), 0, dp(3), 0))
+        if (!::browser.isInitialized) return
+        browser.refresh()
     }
 
     private fun assetCard(name: String): View {
@@ -927,6 +945,80 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         } catch (e: Exception) {
             toast("Import failed: ${e.message}")
         }
+    }
+
+    private fun importFiles(uris: List<android.net.Uri>) {
+        try {
+            val files = ArrayList<Pair<String, java.io.InputStream>>()
+            for (uri in uris) {
+                val name = queryName(uri) ?: continue
+                val stream = contentResolver.openInputStream(uri) ?: continue
+                files.add(name to stream)
+            }
+            if (files.isEmpty()) return
+            val summary = browser.hub.importFiles(files)
+            toast("Imported $summary")
+            refreshAssets(); showTab(1)
+        } catch (e: Exception) {
+            toast("Import failed: ${e.message}")
+        }
+    }
+
+    private fun importZip(uri: android.net.Uri) {
+        try {
+            val name = queryName(uri) ?: "pack.zip"
+            val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+            val summary = browser.hub.importZipBytes(bytes)
+            toast("Imported $summary from $name")
+            refreshAssets(); showTab(1)
+        } catch (e: Exception) {
+            toast("Import failed: ${e.message}")
+        }
+    }
+
+    private inner class BrowserCallbacks : AssetBrowserView.Callbacks {
+        override fun onAssignToSelection(file: String, kind: AssetKind?) {
+            val go = synchronized(engine.lock) { engine.scene.findById(state.selectedId) }
+            if (go == null) { toast("Select an object first"); return }
+            history.record(go.id)
+            val sr = synchronized(engine.lock) { go.get<SpriteRenderer>() }
+            if (sr == null) { toast("Selected object has no SpriteRenderer"); return }
+            synchronized(engine.lock) { sr.texture = file }
+            inspector.rebuild()
+            toast("Assigned $file")
+        }
+
+        override fun onOpenScript(file: String) { openScript(file) }
+
+        override fun onInstantiatePrefab(file: String) {
+            val json = com.sengine.project.PrefabIO.load(project, file)
+            if (json == null) { toast("Invalid prefab"); return }
+            history.record(state.selectedId)
+            synchronized(engine.lock) { com.sengine.project.PrefabIO.instantiate(engine.scene, json, 0f, 0f, 0f) }
+            refreshHierarchy()
+            toast("Instantiated ${file.substringAfterLast('/')}")
+        }
+
+        override fun onImportFiles() { importFilesLauncher.launch(arrayOf("*/*")) }
+
+        override fun onImportZip() { importZipLauncher.launch(arrayOf("application/zip", "application/octet-stream", "application/x-zip-compressed")) }
+
+        override fun onOpenStore() {
+            saveScene(silent = true)
+            startActivity(Intent(this@EditorActivity, AssetStoreActivity::class.java).putExtra("project", project.name))
+        }
+
+        override fun onExportZip(files: List<String>) {
+            pendingAssetExport = files
+            assetZipExportLauncher.launch("assets.zip")
+        }
+    }
+
+    private fun queryName(uri: android.net.Uri): String? {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) return it.getString(0)
+        }
+        return null
     }
 
     // ================================================================== console & input
