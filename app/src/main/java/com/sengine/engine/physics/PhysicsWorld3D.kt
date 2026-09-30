@@ -23,6 +23,8 @@ import kotlin.math.sqrt
 class PhysicsWorld3D {
     var listener: PhysicsWorld.Listener? = null
     var iterations = 4
+    /** Physics sub-steps allowed per frame; excess accumulated time is dropped. */
+    var maxSteps = 5
     private var accumulator = 0f
     private val fixedDt = 1f / 60f
     private var prevContacts = HashSet<Long>()
@@ -55,8 +57,9 @@ class PhysicsWorld3D {
         if (scene.objects.none { it.getAny<Collider3D>() != null || it.getAny<Rigidbody3D>() != null }) return
         accumulator += min(dt, 0.25f)
         var n = 0
-        while (accumulator >= fixedDt && n < 5) { fixed(scene, fixedDt); accumulator -= fixedDt; n++ }
-        if (n == 5) accumulator = 0f
+        val cap = maxSteps.coerceIn(1, 10)
+        while (accumulator >= fixedDt && n < cap) { fixed(scene, fixedDt); accumulator -= fixedDt; n++ }
+        if (n == cap) accumulator = 0f
     }
 
     private fun move(go: GameObject, dx: Float, dy: Float, dz: Float) {
@@ -67,9 +70,11 @@ class PhysicsWorld3D {
     }
 
     private fun voxelOf(scene: Scene): Pair<GameObject, VoxelData>? {
-        for (go in scene.objects) {
+        val worlds = scene.index.voxelWorlds
+        for (wi in worlds.indices) {
+            val v = worlds[wi]
+            val go = v.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val v = go.get<VoxelWorld>() ?: continue
             val d = v.data ?: continue
             return go to d
         }
@@ -79,10 +84,12 @@ class PhysicsWorld3D {
     private var currentWaters: List<com.sengine.engine.core.Water> = emptyList()
 
     private fun fixed(scene: Scene, dt: Float) {
-        // integrate
-        for (go in scene.objects) {
+        // integrate (via the per-frame component index — one linear pass, no per-body instanceof scans)
+        val rbs = scene.index.rigidbodies3
+        for (ri in rbs.indices) {
+            val rb = rbs[ri]
+            val go = rb.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val rb = go.get<Rigidbody3D>() ?: continue
             rb.grounded = false
             when (rb.bodyType) {
                 0 -> {
@@ -97,9 +104,11 @@ class PhysicsWorld3D {
             }
         }
         val bodies = ArrayList<Body>()
-        for (go in scene.objects) {
+        val cols = scene.index.colliders3
+        for (ci in cols.indices) {
+            val col = cols[ci]
+            val go = col.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val col = go.get<Collider3D>() ?: continue
             val b = Body(go, go.get(), col); refresh(b); bodies.add(b)
         }
         bodyCount = bodies.size
@@ -167,9 +176,11 @@ class PhysicsWorld3D {
 
     private fun landscapes(scene: Scene): List<Pair<GameObject, com.sengine.engine.core.Landscape>> {
         var out: ArrayList<Pair<GameObject, com.sengine.engine.core.Landscape>>? = null
-        for (go in scene.objects) {
+        val lands = scene.index.landscapes
+        for (li in lands.indices) {
+            val l = lands[li]
+            val go = l.gameObject
             if (!go.isActiveInHierarchy()) continue
-            val l = go.get<com.sengine.engine.core.Landscape>() ?: continue
             l.ensure()
             (out ?: ArrayList<Pair<GameObject, com.sengine.engine.core.Landscape>>().also { out = it }).add(go to l)
         }

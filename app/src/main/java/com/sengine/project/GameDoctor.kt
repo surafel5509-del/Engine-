@@ -110,6 +110,28 @@ object GameDoctor {
                 }
             }
             if (scene.objects.size > 1500) out += Issue(1, "Scene '$name' is heavy", "${scene.objects.size} objects — consider spawning at runtime or using voxels/tiling.", name)
+
+            // ---------------------------------------------------------------- performance checks (v7 Pro)
+            val lightCount = scene.objects.count { it.getAny<com.sengine.engine.core.Light>() != null }
+            if (lightCount > 8) out += Issue(1, "Scene '$name' has $lightCount lights",
+                "The 3D renderer uses 1 directional + 4 point lights — extra lights are ignored. Remove unused Light components.", name)
+            val shadowCasters = scene.objects.count { it.getAny<com.sengine.engine.core.MeshRenderer>()?.castShadows == true }
+            if (shadowCasters > 300) out += Issue(1, "$shadowCasters shadow casters in '$name'",
+                "Shadow rendering draws every caster an extra time. Disable Cast Shadows on small/distant meshes or lower Camera3D quality.", name)
+            for (pe in scene.objects.mapNotNull { it.getAny<com.sengine.engine.core.ParticleEmitter>() }) {
+                if (pe.maxParticles > 1000 && pe.emitting && pe.rate > 100f)
+                    out += Issue(1, "Heavy particle emitter on '${pe.gameObject?.name}'",
+                        "rate ${pe.rate.toInt()}/s with max ${pe.maxParticles} particles. Lower the rate or set a Particle Budget in the quality settings.", name)
+            }
+            val colliderCount = scene.objects.count { it.getAny<Collider2D>() != null || it.getAny<Collider3D>() != null }
+            if (colliderCount > 800) out += Issue(0, "Dense physics in '$name'",
+                "$colliderCount colliders. The spatial-hash broadphase handles this, but splitting into streamed chunks scales further.", name)
+            for (js in assets.filter { it.endsWith(".js") }) {
+                val src = project.readAsset(js) ?: continue
+                if (Regex("for\\s*\\([^)]{0,80}(scene\\.find|scene\\.findAll)").containsMatchIn(src))
+                    out += Issue(1, "$js looks up objects inside a loop",
+                        "scene.find() scans the scene — cache the result in a variable in onStart() instead of looking it up every frame.", name)
+            }
         }
 
         // ---------------------------------------------------------------- assets

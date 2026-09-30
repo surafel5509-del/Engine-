@@ -24,6 +24,8 @@ class GameObject(var id: Long, var name: String) {
     val components = mutableListOf<Component>()
 
     @Volatile var destroyed = false
+    /** Transient scratch slot (draw-order index within a frame); never serialised. */
+    @JvmField var scratchIndex = 0
 
     /** Cached world transform, refreshed by [Scene.updateTransforms]. */
     val world = Affine()

@@ -213,7 +213,22 @@ class ParticleEmitter : Component() {
     var accumulator = 0f
     var pendingBurst = 0
 
-    class Particle(var x: Float, var y: Float, var vx: Float, var vy: Float, var age: Float, var life: Float)
+    class Particle(var x: Float, var y: Float, var vx: Float, var vy: Float, var age: Float, var life: Float) {
+        companion object {
+            /** Free list so a heavy emitter recycles instances instead of allocating every frame. */
+            private val pool = ArrayDeque<Particle>()
+
+            fun obtain(x: Float, y: Float, vx: Float, vy: Float, age: Float, life: Float): Particle {
+                val p = pool.removeLastOrNull() ?: return Particle(x, y, vx, vy, age, life)
+                p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.age = age; p.life = life
+                return p
+            }
+
+            fun recycle(p: Particle) {
+                if (pool.size < 8192) pool.addLast(p)
+            }
+        }
+    }
 
     /** Applies a ready-made look (fire, smoke, dust, splash…). Index into [PRESETS]. */
     fun applyPreset(i: Int) {

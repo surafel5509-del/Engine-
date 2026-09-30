@@ -350,6 +350,38 @@ class SScene(private val engine: Engine, private val sys: ScriptSystem) {
     fun nearest(tag: String, x: Double, y: Double): Any? = engine.scene.objects
         .filter { it.tag == tag && !it.destroyed && it.isActiveInHierarchy() }
         .minByOrNull { (it.world.tx - x) * (it.world.tx - x) + (it.world.ty - y) * (it.world.ty - y) }?.let { sys.toJs(it) }
+
+    // ------------------------------------------------------------------ engine stats & quality (v7 Pro)
+    /** Live performance counters: {fps, frameMs, drawCalls, batches, quads, culled, objects, particles, bodies, contacts, scripts, heapMb}. */
+    fun stats(): Any? {
+        val e = engine; val s = e.stats
+        return sys.newObject(mapOf(
+            "fps" to e.fps.toDouble(), "frameMs" to s.frameMs.toDouble(),
+            "drawCalls" to s.drawCalls.toDouble(), "batches" to s.renderBatches.toDouble(), "quads" to s.quadsDrawn.toDouble(),
+            "culled" to (s.culled2D + s.culled3D).toDouble(), "objects" to s.objects.toDouble(), "components" to s.components.toDouble(),
+            "particles" to s.particles.toDouble(),
+            "bodies" to (s.bodies2D + s.bodies3D).toDouble(), "contacts" to (s.contacts2D + s.contacts3D).toDouble(),
+            "scripts" to s.scriptsRunning.toDouble(), "heapMb" to s.heapMb.toDouble()))
+    }
+    fun getFps(): Double = engine.fps.toDouble()
+    /** Sprite GPU batching on/off (on by default). */
+    fun setBatching(v: Boolean) { engine.quality.batching = v }
+    fun getBatching(): Boolean = engine.quality.batching
+    /** 2D viewport culling on/off (on by default). */
+    fun setCulling(v: Boolean) { engine.quality.culling2D = v }
+    fun getCulling(): Boolean = engine.quality.culling2D
+    /** Shadow master switch. */
+    fun setShadows(v: Boolean) { engine.quality.shadows = v }
+    fun getShadows(): Boolean = engine.quality.shadows
+    /** Global particle budget multiplier (0..4, 1 = emitter defaults). */
+    fun setParticleBudget(v: Double) { engine.quality.particleBudget = v.toFloat().coerceIn(0f, 4f) }
+    fun getParticleBudget(): Double = engine.quality.particleBudget.toDouble()
+    /** Physics solver iterations (1 = fastest; 2-4 improve stacking). */
+    fun setSolverIterations(v: Double) { engine.physics.iterations = v.toInt().coerceIn(1, 8) }
+    fun getSolverIterations(): Double = engine.physics.iterations.toDouble()
+    /** Game speed: 1 = normal, 0.5 = slow motion, 0 = frozen gameplay. */
+    fun setTimeScale(v: Double) { engine.timeScale = v.toFloat().coerceIn(0f, 10f) }
+    fun getTimeScale(): Double = engine.timeScale.toDouble()
     /** 3D version of findInRadius: objects with [tag] within [radius] of (x, y, z), nearest first. */
     fun findInRadius3(tag: String, x: Double, y: Double, z: Double, radius: Double): Any? {
         val r2 = radius * radius

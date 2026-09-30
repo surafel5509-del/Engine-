@@ -1,0 +1,53 @@
+# Builds the local development toolchain (JDK jlink runtime, kotlinc, jars) on a CI runner
+# (full network) and commits it to a per-run cache branch. The sandbox clones that branch.
+name: Toolchain cache v8
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/01a0eea2-engine]
+    paths-ignore:
+      - "toolchain-local/**"
+      - "app/src/test/**"
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Gather toolchain
+        if: always()
+        run: |
+          mkdir -p out/kotlinc
+          exec > >(tee out/log.txt) 2>&1
+          set -x
+          curl -fL -o kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip && \
+            unzip -q kotlin.zip -d kotlin_dist && cp -r kotlin_dist/kotlinc/lib/* out/kotlinc/ || echo "KOTLIN_FAILED"
+          rm -rf out/jre
+          jlink --add-modules java.base,java.logging,java.xml,java.naming,java.management,java.sql,java.desktop,jdk.unsupported,jdk.zipfs,jdk.crypto.ec \
+                --strip-debug --no-header-files --no-man-pages --compress=2 --output out/jre || \
+            { rm -rf out/jre; jlink --add-modules java.base,java.logging,java.xml,java.management,jdk.unsupported,jdk.zipfs \
+                --strip-debug --no-header-files --no-man-pages --output out/jre; } || echo "JLINK_FAILED"
+          curl -fL -o out/org-json-20231013.jar https://repo1.maven.org/maven2/org/json/json/20231013/json-20231013.jar || echo "JSON_FAILED"
+          curl -fL -o out/rhino-1.7.13.jar https://repo1.maven.org/maven2/org/mozilla/rhino/1.7.13/rhino-1.7.13.jar || echo "RHINO_FAILED"
+          for u in platform-34_r02.zip platform-34_r01.zip platform-34-ext7_r03.zip platform-33_r02.zip; do
+            curl -fsL -o platform.zip "https://dl.google.com/android/repository/$u" || continue
+            unzip -q platform.zip -d plat && find plat -name android.jar -exec cp {} out/android-34.jar \; && break
+          done
+          [ -f out/android-34.jar ] || echo "ANDROIDJAR_FAILED"
+          ls -la out; du -sh out/* || true
+      - name: Commit toolchain branch
+        if: always()
+        run: |
+          git config user.email "ci@sengine.local"
+          git config user.name "sengine-ci"
+          BR="toolchain-cache-${GITHUB_RUN_NUMBER}"
+          git checkout --orphan "$BR"
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          git add out
+          git commit -m "toolchain cache ${GITHUB_RUN_NUMBER}"
+          git push origin "$BR"

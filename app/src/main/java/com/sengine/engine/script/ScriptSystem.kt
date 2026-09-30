@@ -38,6 +38,13 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
 
     val isRunning get() = cx != null
 
+    /** Number of live script instances (started, not failed) for the profiler. */
+    val runningCount: Int get() {
+        var n = 0
+        for (i in instances.indices) if (instances[i].started && !instances[i].failed) n++
+        return n
+    }
+
     fun begin() {
         end()
         val c = Context.enter()
