@@ -1,0 +1,46 @@
++ curl -fL -o kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.21/kotlin-compiler-2.0.21.zip
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+ 85 81.8M   85 70.0M    0     0  63.4M      0  0:00:01  0:00:01 --:--:-- 63.4M100 81.8M  100 81.8M    0     0  57.8M      0  0:00:01  0:00:01 --:--:-- 37.9M
++ unzip -q kotlin.zip -d kotlin_dist
++ cp -r kotlin_dist/kotlinc/lib/allopen-compiler-plugin.jar kotlin_dist/kotlinc/lib/android-extensions-compiler.jar kotlin_dist/kotlinc/lib/android-extensions-runtime.jar kotlin_dist/kotlinc/lib/annotations-13.0.jar kotlin_dist/kotlinc/lib/assignment-compiler-plugin.jar kotlin_dist/kotlinc/lib/compose-compiler.jar kotlin_dist/kotlinc/lib/js.engines.jar kotlin_dist/kotlinc/lib/jvm-abi-gen.jar kotlin_dist/kotlinc/lib/kotlin-annotation-processing-cli.jar kotlin_dist/kotlinc/lib/kotlin-annotation-processing-compiler.jar kotlin_dist/kotlinc/lib/kotlin-annotation-processing-runtime.jar kotlin_dist/kotlinc/lib/kotlin-annotation-processing.jar kotlin_dist/kotlinc/lib/kotlin-annotations-jvm-sources.jar kotlin_dist/kotlinc/lib/kotlin-annotations-jvm.jar kotlin_dist/kotlinc/lib/kotlin-ant.jar kotlin_dist/kotlinc/lib/kotlin-compiler.jar kotlin_dist/kotlinc/lib/kotlin-daemon-client.jar kotlin_dist/kotlinc/lib/kotlin-daemon.jar kotlin_dist/kotlinc/lib/kotlin-imports-dumper-compiler-plugin.jar kotlin_dist/kotlinc/lib/kotlin-main-kts.jar kotlin_dist/kotlinc/lib/kotlin-preloader.jar kotlin_dist/kotlinc/lib/kotlin-reflect-sources.jar kotlin_dist/kotlinc/lib/kotlin-reflect.jar kotlin_dist/kotlinc/lib/kotlin-runner.jar kotlin_dist/kotlinc/lib/kotlin-script-runtime-sources.jar kotlin_dist/kotlinc/lib/kotlin-script-runtime.jar kotlin_dist/kotlinc/lib/kotlin-scripting-common.jar kotlin_dist/kotlinc/lib/kotlin-scripting-compiler-impl.jar kotlin_dist/kotlinc/lib/kotlin-scripting-compiler.jar kotlin_dist/kotlinc/lib/kotlin-scripting-jvm.jar kotlin_dist/kotlinc/lib/kotlin-serialization-compiler-plugin.jar kotlin_dist/kotlinc/lib/kotlin-stdlib-jdk7-sources.jar kotlin_dist/kotlinc/lib/kotlin-stdlib-jdk7.jar kotlin_dist/kotlinc/lib/kotlin-stdlib-jdk8-sources.jar kotlin_dist/kotlinc/lib/kotlin-stdlib-jdk8.jar kotlin_dist/kotlinc/lib/kotlin-stdlib-js-sources.jar kotlin_dist/kotlinc/lib/kotlin-stdlib-js.klib kotlin_dist/kotlinc/lib/kotlin-stdlib-sources.jar kotlin_dist/kotlinc/lib/kotlin-stdlib.jar kotlin_dist/kotlinc/lib/kotlin-test-js-sources.jar kotlin_dist/kotlinc/lib/kotlin-test-js.klib kotlin_dist/kotlinc/lib/kotlin-test-junit-sources.jar kotlin_dist/kotlinc/lib/kotlin-test-junit.jar kotlin_dist/kotlinc/lib/kotlin-test-junit5-sources.jar kotlin_dist/kotlinc/lib/kotlin-test-junit5.jar kotlin_dist/kotlinc/lib/kotlin-test-sources.jar kotlin_dist/kotlinc/lib/kotlin-test-testng-sources.jar kotlin_dist/kotlinc/lib/kotlin-test-testng.jar kotlin_dist/kotlinc/lib/kotlin-test.jar kotlin_dist/kotlinc/lib/kotlinx-coroutines-core-jvm.jar kotlin_dist/kotlinc/lib/kotlinx-serialization-compiler-plugin.jar kotlin_dist/kotlinc/lib/lombok-compiler-plugin.jar kotlin_dist/kotlinc/lib/mutability-annotations-compat.jar kotlin_dist/kotlinc/lib/noarg-compiler-plugin.jar kotlin_dist/kotlinc/lib/parcelize-compiler.jar kotlin_dist/kotlinc/lib/parcelize-runtime.jar kotlin_dist/kotlinc/lib/power-assert-compiler-plugin.jar kotlin_dist/kotlinc/lib/sam-with-receiver-compiler-plugin.jar kotlin_dist/kotlinc/lib/scripting-compiler.jar kotlin_dist/kotlinc/lib/trove4j.jar out/kotlinc/
++ rm -rf out/jre
++ jlink --add-modules java.base,java.logging,java.xml,java.naming,java.management,java.sql,java.desktop,jdk.unsupported,jdk.zipfs,jdk.crypto.ec --strip-debug --no-header-files --no-man-pages --compress=2 --output out/jre
++ curl -fL -o out/org-json-20231013.jar https://repo1.maven.org/maven2/org/json/json/20231013/json-20231013.jar
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 74702  100 74702    0     0  1519k      0 --:--:-- --:--:-- --:--:-- 1552k
++ curl -fL -o out/rhino-1.7.13.jar https://repo1.maven.org/maven2/org/mozilla/rhino/1.7.13/rhino-1.7.13.jar
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100 1284k  100 1284k    0     0  23.1M      0 --:--:-- --:--:-- --:--:-- 23.2M
++ for u in platform-34_r02.zip platform-34_r01.zip platform-34-ext7_r03.zip platform-33_r02.zip
++ curl -fsL -o platform.zip https://dl.google.com/android/repository/platform-34_r02.zip
++ continue
++ for u in platform-34_r02.zip platform-34_r01.zip platform-34-ext7_r03.zip platform-33_r02.zip
++ curl -fsL -o platform.zip https://dl.google.com/android/repository/platform-34_r01.zip
++ continue
++ for u in platform-34_r02.zip platform-34_r01.zip platform-34-ext7_r03.zip platform-33_r02.zip
++ curl -fsL -o platform.zip https://dl.google.com/android/repository/platform-34-ext7_r03.zip
++ unzip -q platform.zip -d plat
++ find plat -name android.jar -exec cp '{}' out/android-34.jar ';'
++ break
++ '[' -f out/android-34.jar ']'
++ ls -la out
+total 27132
+drwxr-xr-x  4 runner runner     4096 Sep 30 04:17 .
+drwxr-xr-x 10 runner runner     4096 Sep 30 04:17 ..
+-rw-r--r--  1 runner runner 26361808 Sep 30 04:17 android-34.jar
+drwxr-xr-x  6 runner runner     4096 Sep 30 04:17 jre
+drwxr-xr-x  2 runner runner     4096 Sep 30 04:17 kotlinc
+-rw-r--r--  1 runner runner     5609 Sep 30 04:17 log.txt
+-rw-r--r--  1 runner runner    74702 Sep 30 04:17 org-json-20231013.jar
+-rw-r--r--  1 runner runner  1315838 Sep 30 04:17 rhino-1.7.13.jar
++ du -sh out/android-34.jar out/jre out/kotlinc out/log.txt out/org-json-20231013.jar out/rhino-1.7.13.jar
+26M	out/android-34.jar
+54M	out/jre
+90M	out/kotlinc
+8.0K	out/log.txt
+76K	out/org-json-20231013.jar
+1.3M	out/rhino-1.7.13.jar
