@@ -128,6 +128,8 @@ object AssetLibrary {
         list += text("Arrow", "3D Models", "Arrow.obj", "Direction arrow, OBJ", "3D") { Models.arrow() }
         // ---------------------------------------------------------------- Full Edition content
         list += AssetPacksV3.items(Scripts.all.map { it.first }.toSet())
+        // ---------------------------------------------------------------- Ultimate Pro forge content
+        list += AssetForge.items()
         // ---------------------------------------------------------------- packs
         fun pack(title: String, desc: String, names: List<String>) {
             val parts = names.mapNotNull { n -> list.firstOrNull { it.title == n } }
@@ -141,6 +143,23 @@ object AssetLibrary {
             listOf("Low-Poly Tree", "Rock", "House", "Crystal", "Checker", "Grass Tile", "Stone", "Player3D", "Rotator", "Toon"))
         pack("VFX Pack", "Particles, fire, shaders and power-up sound",
             listOf("Soft Particle", "Spark", "Fire (6 frames)", "Dissolve", "Hit Flash", "Rainbow", "Hologram", "Power Up"))
+
+        pack("Ultimate RPG Pack", "Heroes, monsters, weapons, gems, potions, chests and a full RPG sound set",
+            listOf("Knight", "Court Mage", "Ranger", "Orc Warrior", "Goblin Scout", "Skeleton Warrior", "Rotting Zombie",
+                "Steel Sword", "Iron Shield", "Shortbow", "Ruby Gem", "Health Potion", "Mana Potion", "Treasure Chest",
+                "Dungeon Door", "Gold Key", "Skull", "Heart", "Level Up", "Quest Complete", "Spell Cast", "Parry"))
+        pack("Ultimate Space Pack", "Rockets, robots, planets, laser VFX and sci-fi sounds",
+            listOf("Rocket", "Flying Saucer", "Service Robot", "Assault Mech", "Ocean World", "Red Planet",
+                "Laser Charge (4 frames)", "Shockwave (6 frames)", "Muzzle Flash (3 frames)", "Power Cell", "Logic Chip",
+                "Warp Out", "Teleport In", "Alarm"))
+        pack("Ultimate Nature Pack", "Trees, flowers, critters, weather VFX and forest sounds",
+            listOf("Pine Tree", "Oak Tree", "Palm Tree", "Leafy Bush", "Desert Cactus", "Tulip", "Daisy", "Rose",
+                "Bluebird", "Honey Bee", "Garden Snake", "Beach Crab", "Leaves Fall (4 frames)", "Bubble Rise (4 frames)",
+                "Water Ripple (4 frames)", "Dust Puff (4 frames)"))
+        pack("Ultimate UI Pack", "Buttons, panels, hearts, stars, sliders and menu sounds",
+            listOf("Green UI Button", "Red UI Button", "Blue UI Button", "Gold UI Button", "Dark Panel", "Light Panel",
+                "Empty Heart", "Heart", "Empty Star", "Gold Star", "Checkbox Off", "Checkbox On", "Slider Track",
+                "Slider Thumb", "Golden Frame", "Achievement", "Heart Monitor"))
         list.addAll(0, AssetPacksV3.packs(list))
         return list
     }
