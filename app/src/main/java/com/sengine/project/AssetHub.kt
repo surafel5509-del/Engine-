@@ -124,11 +124,15 @@ class AssetHub(private val project: Project) {
 
     fun saveMeta() {
         val o = JSONObject()
-        o.put("favorites", JSONObject(favorites))
+        val f = JSONObject()
+        for ((k, v) in favorites) f.put(k, v)
+        o.put("favorites", f)
         val t = JSONObject()
         for ((k, v) in tags) t.put(k, JSONArray(v))
         o.put("tags", t)
-        o.put("added", JSONObject(addedAt))
+        val a = JSONObject()
+        for ((k, v) in addedAt) a.put(k, v)
+        o.put("added", a)
         project.dir.mkdirs()
         metaFile.writeText(o.toString(1))
     }
