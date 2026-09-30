@@ -1,8 +1,21 @@
-# S Engine — v7 Pro Performance Edition #
+# S Engine — v8 Ultimate Edition Pro #
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 
 > Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
+
+## 💎 v8 Ultimate Edition Pro
+
+The biggest content and workflow release yet: a **pro asset system**, a **procedural asset forge**, **prefabs**, **file & ZIP import**, and a **redocked Unity-style editor layout**.
+
+| Area | What's new |
+|---|---|
+| **Asset Forge** | A procedural content forge that **generates 240+ brand-new store items** the moment you open the Store: ~180 pixel-perfect sprites (weapons, armour, potions, keys, coins, gems, tools, creatures, machines, plants, food, runes, icons), 6 seamless 64×64 textures, **30 animated sprite sheets** (flag wave, bubble rise, muzzle flash, laser charge, shockwave, dust puff, lightning, portal, campfire, torch flicker, waterfall, smoke drift, rain, snow, coins, chest open, magic circle, fireball, explosion, heartbeat, gear spin, radar sweep, battery, signal, hourglass, compass spin, target pulse, slime bounce, bird fly, fish swim, butterfly) each shipping with a ready `.anim` clip, **27 synthesized sound effects** (hits, pickups, magic, machines, UI clicks) and **8 music seeds across 8 styles** (Chiptune, Action Battle, Chill Lo-Fi, Racing Rush, Spooky Night, Victory Fanfare, Menu Theme, Block World) rendered to real WAV |
+| **Store catalogue** | **440+ items** (up from ~66) across Packs / Textures / Sprites / Sprite Sheets / Sounds / Shaders / Scripts / Blueprints / 3D Models / Music / UI Kit — every sprite and sheet previews as a real generated thumbnail, sounds preview inline, and installs drop straight into your project's `assets/` |
+| **Asset Hub & browser** | The editor's bottom panel is now a **docked Unity-style asset browser**: category chips with live counts, instant search, a 5-column thumbnail grid with async image loading, favourites, tags and an `assets.index.json` meta file that survives renames. Long-press any asset for assign / open / instantiate / favourite / rename / duplicate / export / delete |
+| **File & ZIP import** | **Import Files** (multi-select) and **Import ZIP** buttons pull anything from your device straight into the project — folders inside zips are preserved, path-traversal is blocked, name clashes auto-suffix, and when a zip contains numbered image frames (`slime_0.png`, `slime_1.png`, …) the Hub **assembles a packed sprite sheet plus a ready `.anim` clip automatically**. Any selection exports back out as a ZIP |
+| **Prefabs** | Capture any object **with its whole child hierarchy** to a reusable `.prefab`, then instantiate it anywhere — names uniquified, transforms kept parent-local, textures/components intact |
+| **Editor layout** | Assets tab is now the **first** tab in a taller 176 dp bottom panel; the console/browser toggle remembers where you were; Import/Store actions sit in the tab bar |
 
 ## 🚀 v7 Pro Performance Edition
 
