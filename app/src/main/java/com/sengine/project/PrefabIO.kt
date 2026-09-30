@@ -16,9 +16,7 @@ object PrefabIO {
     /** Serialises [root] and all descendants (breadth-first: parents always precede children). */
     fun capture(scene: Scene, root: GameObject): JSONObject {
         val arr = JSONArray()
-        val ids = ArrayList<Int>()
         fun walk(go: GameObject) {
-            ids.add(go.id)
             arr.put(SceneSerializer.objectToJson(go))
             for (c in scene.childrenOf(go)) walk(c)
         }
@@ -53,27 +51,20 @@ object PrefabIO {
     fun instantiate(scene: Scene, json: JSONObject, x: Float, y: Float, z: Float): GameObject? {
         val objects = json.optJSONArray("objects") ?: return null
         if (objects.length() == 0) return null
-        val rootId = json.optInt("rootId", objects.getJSONObject(0).optInt("id"))
-        val created = HashMap<Int, GameObject>()
-        val rootPos = FloatArray(3)
-        var first = true
-        // parents always precede children in capture order, so a single pass rebuilds the tree
+        val rootId = json.optLong("rootId", objects.getJSONObject(0).optLong("id"))
+        val created = HashMap<Long, GameObject>()
+        // parents always precede children in capture order, so a single pass rebuilds the tree;
+        // captured transforms are parent-local, so only the root is moved to the spawn point
         for (i in 0 until objects.length()) {
             val o = objects.getJSONObject(i)
-            val oldId = o.optInt("id", i)
-            val oldParent = if (o.has("parent")) o.optInt("parent") else -1
+            val oldId = o.optLong("id", i.toLong())
+            val oldParent = if (o.has("parent")) o.optLong("parent") else -1L
             val parentGo = if (oldId == rootId) null else created[oldParent]
             val go = scene.create(scene.uniqueName(o.optString("name", "Object")), parentGo)
             SceneSerializer.applyObjectJson(go, o)
-            if (first) {
-                rootPos[0] = go.x; rootPos[1] = go.y; rootPos[2] = go.z
-                go.x = x; go.y = y; go.z = z
-                first = false
-            } else {
-                go.x += x - rootPos[0]; go.y += y - rootPos[1]; go.z += z - rootPos[2]
-            }
+            if (oldId == rootId || (i == 0 && !created.containsKey(rootId))) { go.x = x; go.y = y; go.z = z }
             created[oldId] = go
         }
-        return created[rootId] ?: objects.getJSONObject(0).optInt("id", -1).let { created[it] }
+        return created[rootId] ?: created[objects.getJSONObject(0).optLong("id", -1L)]
     }
 }

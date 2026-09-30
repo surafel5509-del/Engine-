@@ -45,6 +45,8 @@ object Assert {
 
 object Assume {
     fun assumeTrue(v: Boolean) { if (!v) throw SkipException() }
+    fun assumeTrue(msg: String, v: Boolean) { if (!v) throw SkipException() }
     fun assumeFalse(v: Boolean) { if (v) throw SkipException() }
+    fun assumeFalse(msg: String, v: Boolean) { if (v) throw SkipException() }
     class SkipException : RuntimeException("skipped by assumption")
 }

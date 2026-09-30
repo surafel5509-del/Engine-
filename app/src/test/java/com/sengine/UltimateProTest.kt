@@ -44,10 +44,11 @@ class UltimateProTest {
         assertTrue("catalogue should exceed 200 items, was ${items.size}", items.size >= 200)
         val titles = items.map { it.title }
         assertEquals("titles must be unique", titles.size, titles.distinct().size)
+        // pack items re-list their members' files by design, so uniqueness is checked leaf-to-leaf
         val files = ArrayList<String>()
         for (i in items) {
             assertTrue("item ${i.title} has no files", i.files.isNotEmpty())
-            files.addAll(i.files)
+            if (i.category != "Packs") files.addAll(i.files)
         }
         assertEquals("asset file names must be unique across the store", files.size, files.distinct().size)
         val packs = items.filter { it.category == "Packs" }
@@ -70,7 +71,7 @@ class UltimateProTest {
                     pngs++
                     val head = file.inputStream().use { it.readNBytes(8) }
                     assertEquals("bad PNG magic in $f", 0x89, head[0].toInt() and 0xFF)
-                    assertEquals('P'.code.toLong(), head[1].code.toLong())
+                    assertEquals(0x50L, head[1].toLong() and 0xFF)
                 }
             }
         }
@@ -225,8 +226,9 @@ class UltimateProTest {
         p.writeAsset("b.js", "2")
         val hub = AssetHub(p)
         assertTrue(hub.toggleFavorite("a.js"))
-        assertFalse(hub.toggleFavorite("b.js"))
-        assertFalse(hub.toggleFavorite("b.js")) // toggled back on
+        assertTrue(hub.toggleFavorite("b.js"))
+        assertFalse(hub.toggleFavorite("b.js")) // off again
+        assertTrue(hub.toggleFavorite("b.js")) // toggled back on
         val hub2 = AssetHub(p) // fresh instance reads persisted meta
         val a = hub2.scan().first { it.file == "a.js" }
         val b = hub2.scan().first { it.file == "b.js" }
@@ -266,8 +268,9 @@ class UltimateProTest {
         assertEquals(before + 2, scene.objects.size)
         val newChild = scene.childrenOf(newRoot).single()
         assertEquals("Sword (1)", newChild.name)
-        assertEquals(101.5f, newChild.x, 0.001f)
-        assertEquals(198.5f, newChild.y, 0.001f)
+        // captured transforms are parent-local: the child keeps its local offset under the moved root
+        assertEquals(1.5f, newChild.x, 0.001f)
+        assertEquals(-0.5f, newChild.y, 0.001f)
         assertEquals(newRoot.id, newChild.parent!!.id)
         assertEquals("Hero.png", newRoot.get<SpriteRenderer>()!!.texture)
         assertEquals("Sword.png", newChild.get<SpriteRenderer>()!!.texture)

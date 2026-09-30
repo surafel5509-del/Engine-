@@ -107,14 +107,17 @@ class AssetHub(private val project: Project) {
             if (!metaFile.exists()) return
             val o = JSONObject(metaFile.readText())
             val f = o.optJSONObject("favorites")
-            for (k in f?.keys() ?: emptySet()) favorites[k] = f!!.getBoolean(k)
+            f?.let { val ks = it.keys(); while (ks.hasNext()) { val k = ks.next(); favorites[k] = it.getBoolean(k) } }
             val t = o.optJSONObject("tags")
-            for (k in t?.keys() ?: emptySet()) {
-                val arr = t!!.getJSONArray(k)
-                tags[k] = (0 until arr.length()).map { arr.getString(it) }.toMutableList()
+            t?.let {
+                val ks = it.keys()
+                while (ks.hasNext()) {
+                    val k = ks.next(); val arr = it.getJSONArray(k)
+                    tags[k] = (0 until arr.length()).map { j -> arr.getString(j) }.toMutableList()
+                }
             }
             val a = o.optJSONObject("added")
-            for (k in a?.keys() ?: emptySet()) addedAt[k] = a!!.getLong(k)
+            a?.let { val ks = it.keys(); while (ks.hasNext()) { val k = ks.next(); addedAt[k] = it.getLong(k) } }
         } catch (_: Exception) {
         }
     }
@@ -195,7 +198,7 @@ class AssetHub(private val project: Project) {
         val f2 = File(project.assetsDir, dst)
         File(f2.parent).mkdirs()
         if (!src.renameTo(f2)) return null
-        if (favorites.remove(file)) favorites[dst] = true
+        if (favorites.remove(file) == true) favorites[dst] = true
         tags[file]?.let { tags[dst] = it; tags.remove(file) }
         saveMeta()
         return dst

@@ -1,5 +1,6 @@
 package com.sengine.project
 
+import com.sengine.engine.audio.Song
 import com.sengine.engine.texture.PngEncoder
 import kotlin.math.PI
 import kotlin.math.abs
@@ -114,6 +115,7 @@ object AssetForge {
     private val STEEL = 0xFFC9D4Df.toInt() to 0xFF7E8B99.toInt()
 
     private fun cAB(a: Int, b: Int) = ForgeArt.pal('a' to a, 'A' to b)
+    private fun cAB(a: Long, b: Long) = ForgeArt.pal('a' to a.toInt(), 'A' to b.toInt())
 
     // ==================================================================== catalogue assembly
 
@@ -144,7 +146,7 @@ object AssetForge {
 
     private fun sprite(title: String, file: String, desc: String, rows: List<String>, pal: Map<Char, Int>) {
         items0 += AssetLibrary.Item(title, "Sprites", desc, listOf(file), "🖼",
-            preview = { val b = px16(rows, pal).png(); android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size) },
+            preview = { val b = px16(rows, pal).png(); android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size)!! },
             install = { p -> writePng(p, file, px16(rows, pal)) })
     }
 
@@ -155,7 +157,7 @@ object AssetForge {
 
     private fun texItem(title: String, file: String, desc: String, cat: String, gen: () -> Px) {
         items0 += AssetLibrary.Item(title, cat, desc, listOf(file), "🖼",
-            preview = { val b = gen().png(); android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size) },
+            preview = { val b = gen().png(); android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size)!! },
             install = { p -> writePng(p, file, gen()) })
     }
 
@@ -175,7 +177,7 @@ object AssetForge {
     private fun anim(spec: AnimSpec) {
         anims0 += spec
         items0 += AssetLibrary.Item(spec.title, "Sprite Sheets", spec.desc, listOf(spec.texFile, spec.animFile), "🎞",
-            preview = { val b = sheet(spec).png(); android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size) },
+            preview = { val b = sheet(spec).png(); android.graphics.BitmapFactory.decodeByteArray(b, 0, b.size)!! },
             install = { p ->
                 writePng(p, spec.texFile, sheet(spec))
                 p.writeAsset(spec.animFile, clipJson(spec).toString(2))
@@ -204,16 +206,16 @@ object AssetForge {
 
     private fun build() {
         // ------------------------------------------------------------ RPG items (palette families)
-        val gemColors = listOf("Ruby" to (0xFFE23B4E.toInt() to 0xFF8C1220), "Sapphire" to (0xFF3B7BE2.toInt() to 0xFF16408C),
-            "Emerald" to (0xFF3BE26B.toInt() to 0xFF128C36), "Topaz" to (0xFFE2B23B.toInt() to 0xFF8C6E12),
-            "Amethyst" to (0xFFA64CE2.toInt() to 0xFF5E128C), "Citrine" to (0xFFF0E44C.toInt() to 0xFF9C8E14),
-            "Obsidian" to (0xFF5A5F6E.toInt() to 0xFF262A33), "Pearl" to (0xFFF6F0FF.toInt() to 0xFFB9AED4))
+        val gemColors = listOf("Ruby" to (0xFFE23B4E.toInt() to 0xFF8C1220.toInt()), "Sapphire" to (0xFF3B7BE2.toInt() to 0xFF16408C.toInt()),
+            "Emerald" to (0xFF3BE26B.toInt() to 0xFF128C36.toInt()), "Topaz" to (0xFFE2B23B.toInt() to 0xFF8C6E12.toInt()),
+            "Amethyst" to (0xFFA64CE2.toInt() to 0xFF5E128C.toInt()), "Citrine" to (0xFFF0E44C.toInt() to 0xFF9C8E14.toInt()),
+            "Obsidian" to (0xFF5A5F6E.toInt() to 0xFF262A33.toInt()), "Pearl" to (0xFFF6F0FF.toInt() to 0xFFB9AED4.toInt()))
         for ((name, cols) in gemColors)
             sprite("$name Gem", "$name Gem.png", "$name gemstone, 16×16 pixel art", ForgeArt.arts["gem"]!!, cAB(cols.first, cols.second))
 
-        val potions = listOf("Health" to (0xFFE23B4E.toInt() to 0xFF8C1220), "Mana" to (0xFF3B6FE2.toInt() to 0xFF163A8C),
-            "Stamina" to (0xFF3BE2B0.toInt() to 0xFF128C6E), "Poison" to (0xFF7BE23B.toInt() to 0xFF3A8C12),
-            "Strength" to (0xFFE2823B.toInt() to 0xFF8C4A12), "Invisibility" to (0xFFB8B8D8.toInt() to 0xFF6E6E96))
+        val potions = listOf("Health" to (0xFFE23B4E.toInt() to 0xFF8C1220.toInt()), "Mana" to (0xFF3B6FE2.toInt() to 0xFF163A8C.toInt()),
+            "Stamina" to (0xFF3BE2B0.toInt() to 0xFF128C6E.toInt()), "Poison" to (0xFF7BE23B.toInt() to 0xFF3A8C12.toInt()),
+            "Strength" to (0xFFE2823B.toInt() to 0xFF8C4A12.toInt()), "Invisibility" to (0xFFB8B8D8.toInt() to 0xFF6E6E96.toInt()))
         for ((name, cols) in potions)
             sprite("$name Potion", "$name Potion.png", "$name potion bottle, 16×16", ForgeArt.arts["potion"]!!, ForgeArt.pal('a' to cols.first.toInt(), 'A' to cols.second.toInt(), 'w' to 0x88FFFFFF.toInt()))
 
@@ -221,7 +223,7 @@ object AssetForge {
             "Shadow Orb" to 0xFF9A6EFF, "Holy Orb" to 0xFFFFE88A, "Storm Orb" to 0xFFB7C7FF)
         for ((name, col) in orbs)
             sprite(name, "$name.png", "Glowing $name for magic effects, 16×16", ForgeArt.arts["orb"]!!,
-                ForgeArt.pal('a' to col, 'A' to darken(col), 'w' to 0xFFFFFFFF.toInt()))
+                ForgeArt.pal('a' to col.toInt(), 'A' to darken(col), 'w' to 0xFFFFFFFF.toInt()))
 
         val metals = listOf("Gold" to GOLD, "Silver" to SILVER, "Bronze" to BRONZE, "Iron" to STEEL)
         for ((name, cols) in metals)
@@ -229,16 +231,16 @@ object AssetForge {
 
         for ((name, cols) in listOf("Gold" to GOLD, "Silver" to SILVER, "Bronze" to BRONZE))
             sprite("$name Coin", "$name Coin.png", "$name currency coin, 16×16", ForgeArt.arts["gem"]!!, cAB(cols.first, cols.second))
-        for ((name, cols) in listOf("Heart" to (0xFFE23B4E.toInt() to 0xFF8C1220), "Life Heart" to (0xFFFF5E7A.toInt() to 0xFFB01E36), "Dark Heart" to (0xFF8A3B6E.toInt() to 0xFF4A1030)))
+        for ((name, cols) in listOf("Ruby Heart" to (0xFFE23B4E.toInt() to 0xFF8C1220.toInt()), "Life Heart" to (0xFFFF5E7A.toInt() to 0xFFB01E36.toInt()), "Dark Heart" to (0xFF8A3B6E.toInt() to 0xFF4A1030.toInt())))
             sprite(name, "$name.png", "Pixel heart, 16×16", ForgeArt.arts["heart"]!!, cAB(cols.first, cols.second))
-        for ((name, cols) in listOf("Gold Star" to GOLD, "Magic Star" to (0xFFB07AFF.toInt() to 0xFF5E2E9C)))
+        for ((name, cols) in listOf("Gold Star" to GOLD, "Magic Star" to (0xFFB07AFF.toInt() to 0xFF5E2E9C.toInt())))
             sprite(name, "$name.png", "Pixel star, 16×16", ForgeArt.arts["star"]!!, cAB(cols.first, cols.second))
 
         // weapons & armour
-        val blades = listOf("Steel" to STEEL, "Flame" to (0xFFFF9A4C.toInt() to 0xFFC24A12), "Ice" to (0xFF9ADFFF.toInt() to 0xFF4E93C2), "Venom" to (0xFF9AFF6E.toInt() to 0xFF4E9C2A))
+        val blades = listOf("Steel" to STEEL, "Flame" to (0xFFFF9A4C.toInt() to 0xFFC24A12.toInt()), "Ice" to (0xFF9ADFFF.toInt() to 0xFF4E93C2.toInt()), "Venom" to (0xFF9AFF6E.toInt() to 0xFF4E9C2A.toInt()))
         for ((name, cols) in blades)
             sprite("$name Sword", "$name Sword.png", "$name sword, 16×16", ForgeArt.arts["sword"]!!, ForgeArt.pal('a' to cols.first.toInt(), 'A' to cols.second.toInt(), 'w' to 0xFFFFFFFF.toInt(), 'M' to 0xFF6E4A2AL.toInt()))
-        for ((name, cols) in listOf("Wooden Shield" to WOODP, "Iron Shield" to STEEL, "Royal Shield" to (0xFF3B6FE2.toInt() to 0xFF163A8C)))
+        for ((name, cols) in listOf("Wooden Shield" to WOODP, "Iron Shield" to STEEL, "Royal Shield" to (0xFF3B6FE2.toInt() to 0xFF163A8C.toInt())))
             sprite(name, "$name.png", "$name, 16×16", ForgeArt.arts["shield"]!!, ForgeArt.pal('a' to cols.first.toInt(), 'A' to cols.second.toInt(), 'c' to GOLD.first.toInt(), 'h' to cols.first.toInt()))
         sprite("Battle Axe", "Battle Axe.png", "Two-handed axe, 16×16", ForgeArt.arts["axe"]!!, ForgeArt.pal('a' to WOODP.first, 'b' to STEEL.first, 'B' to STEEL.second, 'M' to 0xFF6E4A2AL.toInt()))
         sprite("Shortbow", "Shortbow.png", "Wooden bow, 16×16", ForgeArt.arts["bow"]!!, ForgeArt.pal('a' to WOODP.first, 'b' to WOODP.second, 'c' to 0xFFE8E0C8L.toInt()))
@@ -278,10 +280,10 @@ object AssetForge {
         sprite("Skull", "Skull.png", "Dungeon skull, 16×16", ForgeArt.arts["skull"]!!, ForgeArt.pal('w' to 0xFFF2ECDFL.toInt()))
 
         // nature
-        for ((name, cols) in listOf("Red Cap" to (0xFFE23B4E.toInt() to 0xFF8C1220), "Brown Cap" to (0xFFB0793F.toInt() to 0xFF6E4A22), "Blue Cap" to (0xFF4E7AE2.toInt() to 0xFF2A4A96)))
+        for ((name, cols) in listOf("Red Cap" to (0xFFE23B4E.toInt() to 0xFF8C1220.toInt()), "Brown Cap" to (0xFFB0793F.toInt() to 0xFF6E4A22.toInt()), "Blue Cap" to (0xFF4E7AE2.toInt() to 0xFF2A4A96.toInt())))
             sprite("$name Mushroom", "$name Mushroom.png", "$name mushroom, 16×16", ForgeArt.arts["mushroom"]!!, ForgeArt.pal('a' to cols.first.toInt(), 'A' to cols.second.toInt(), 'w' to 0xFFF2ECDFL.toInt()))
         for ((name, col) in listOf("Tulip" to 0xFFE2445E, "Daisy" to 0xFFF6F2E8, "Rose" to 0xFFC22E5E, "Bluebell" to 0xFF5E7AE2))
-            sprite(name, "$name.png", "Wildflower, 16×16", ForgeArt.arts["flower"]!!, ForgeArt.pal('c' to col, 'C' to darken(col), 'a' to 0xFF4E9C3EL.toInt(), 'A' to 0xFF2E6E22L.toInt(), 'w' to 0xFF9CD48AL.toInt()))
+            sprite(name, "$name.png", "Wildflower, 16×16", ForgeArt.arts["flower"]!!, ForgeArt.pal('c' to col.toInt(), 'C' to darken(col), 'a' to 0xFF4E9C3EL.toInt(), 'A' to 0xFF2E6E22L.toInt(), 'w' to 0xFF9CD48AL.toInt()))
         sprite("Leafy Bush", "Leafy Bush.png", "Rounded bush, 16×16", ForgeArt.arts["bush"]!!, cAB(0xFF4E9C3EL, 0xFF2E6E22))
         sprite("Desert Cactus", "Desert Cactus.png", "Saguaro, 16×16", ForgeArt.arts["cactus"]!!, ForgeArt.pal('a' to 0xFF4E9C3EL.toInt(), 'b' to 0xFF3E8C2EL.toInt(), 'w' to 0xFF7ACC5EL.toInt()))
         sprite("Pine Tree", "Pine Tree.png", "Conifer, 16×16", ForgeArt.arts["pine"]!!, cAB(0xFF2E7E42L, 0xFF1C5A2EL))
@@ -291,7 +293,7 @@ object AssetForge {
         sprite("Gravel Patch", "Gravel Patch.png", "Loose stones, 16×16", ForgeArt.arts["gravel"]!!, cAB(0xFF9AA2AEL, 0xFF7E8B99))
 
         // creatures
-        for ((name, cols) in listOf("Green Slime" to (0xFF5ED44E.toInt() to 0xFF2E8C22), "Blue Slime" to (0xFF5EB0D4.toInt() to 0xFF2A6E96), "Lava Slime" to (0xFFE2703B.toInt() to 0xFF9C3A12)))
+        for ((name, cols) in listOf("Green Slime" to (0xFF5ED44E.toInt() to 0xFF2E8C22.toInt()), "Blue Slime" to (0xFF5EB0D4.toInt() to 0xFF2A6E96.toInt()), "Lava Slime" to (0xFFE2703B.toInt() to 0xFF9C3A12.toInt())))
             sprite(name, "$name.png", "Bouncy slime enemy, 16×16", ForgeArt.arts["slime"]!!, ForgeArt.pal('a' to cols.first.toInt(), 'A' to cols.second.toInt(), 'w' to 0xFFFFFFFF.toInt()))
         sprite("Cave Bat", "Cave Bat.png", "Flappy bat, 16×16", ForgeArt.arts["bat"]!!, cAB(0xFF6E5A8CL, 0xFF463861))
         sprite("Friendly Ghost", "Friendly Ghost.png", "Spooky but cute, 16×16", ForgeArt.arts["ghost"]!!, ForgeArt.pal('a' to 0xFFE8F0FFL.toInt(), 'w' to 0xFF2E3642L.toInt()))
@@ -300,10 +302,10 @@ object AssetForge {
         sprite("Garden Snake", "Garden Snake.png", "Slithering snake, 16×16", ForgeArt.arts["snake"]!!, cAB(0xFF5EB24EL, 0xFF2E7E2A))
         sprite("Beach Crab", "Beach Crab.png", "Sideways walker, 16×16", ForgeArt.arts["crab"]!!, cAB(0xFFE26E3BL, 0xFF9C3A12))
         sprite("Honey Bee", "Honey Bee.png", "Buzzing bee, 16×16", ForgeArt.arts["bee"]!!, ForgeArt.pal('a' to 0xFFE2B23BL.toInt(), 'y' to 0xFF3A2E1EL.toInt(), 'w' to 0xFFFFFFFF.toInt()))
-        for ((name, cols) in listOf("Goldfish" to (0xFFE2913B.toInt() to 0xFF9C5A12), "Bluegill" to (0xFF5E9AE2.toInt() to 0xFF2E5E9C), "Koi" to (0xFFF2F2F2.toInt() to 0xFFC22E2E)))
+        for ((name, cols) in listOf("Goldfish" to (0xFFE2913B.toInt() to 0xFF9C5A12.toInt()), "Bluegill" to (0xFF5E9AE2.toInt() to 0xFF2E5E9C.toInt()), "Koi" to (0xFFF2F2F2.toInt() to 0xFFC22E2E.toInt())))
             sprite(name, "$name.png", "Swimming fish, 16×16", ForgeArt.arts["fish"]!!, cAB(cols.first, cols.second))
         sprite("Reef Shark", "Reef Shark.png", "Predator fish, 16×16", ForgeArt.arts["shark"]!!, ForgeArt.pal('a' to 0xFF7E96AEL.toInt(), 'w' to 0xFFE8F0F6L.toInt()))
-        for ((name, cols) in listOf("Bluebird" to (0xFF5E8AE2.toInt() to 0xFF2E569C), "Canary" to (0xFFF2D43B.toInt() to 0xFFC29A12)))
+        for ((name, cols) in listOf("Bluebird" to (0xFF5E8AE2.toInt() to 0xFF2E569C.toInt()), "Canary" to (0xFFF2D43B.toInt() to 0xFFC29A12.toInt())))
             sprite(name, "$name.png", "Small bird, 16×16", ForgeArt.arts["bird"]!!, cAB(cols.first, cols.second))
         sprite("Butterfly", "Butterfly.png", "Fluttering wings, 16×16", ForgeArt.arts["butterfly"]!!, ForgeArt.pal('a' to 0xFFE28AC2L.toInt(), 'w' to 0xFF6E3A5EL.toInt()))
         sprite("Forest Owl", "Forest Owl.png", "Wise bird, 16×16", ForgeArt.arts["owl"]!!, cAB(0xFFB08A5AL, 0xFF7A562E))
@@ -335,7 +337,7 @@ object AssetForge {
         sprite("Flying Saucer", "Flying Saucer.png", "UFO, 16×16", ForgeArt.arts["ufo"]!!, ForgeArt.pal('b' to 0xFF9AA2AEL.toInt(), 'g' to 0xFF6EE2FFL.toInt()))
         sprite("Rocket", "Rocket.png", "Retro rocket, 16×16", ForgeArt.arts["rocket"]!!, ForgeArt.pal('a' to 0xFFE8ECF2L.toInt(), 'b' to 0xFFD84040L.toInt(), 'g' to 0xFFFFB03BL.toInt(), 'w' to 0xFF6E7682L.toInt()))
         sprite("Satellite", "Satellite.png", "Orbiter, 16×16", ForgeArt.arts["satellite"]!!, ForgeArt.pal('a' to 0xFF4E7AE2L.toInt(), 'm' to 0xFFB8C2CCL.toInt(), 'g' to 0xFF6EE2FFL.toInt()))
-        for ((name, cols) in listOf("Ocean World" to (0xFF3B7BE2.toInt() to 0xFF2A56A8), "Jungle World" to (0xFF3BBE62.toInt() to 0xFF1F7E3E), "Red Planet" to (0xFFE2703B.toInt() to 0xFFA8481F)))
+        for ((name, cols) in listOf("Ocean World" to (0xFF3B7BE2.toInt() to 0xFF2A56A8.toInt()), "Jungle World" to (0xFF3BBE62.toInt() to 0xFF1F7E3E.toInt()), "Red Planet" to (0xFFE2703B.toInt() to 0xFFA8481F.toInt())))
             sprite(name, "$name.png", "Planet with atmosphere, 16×16", ForgeArt.arts["planet"]!!, cAB(cols.first, cols.second))
         sprite("Crescent Moon", "Crescent Moon.png", "Night moon, 16×16", ForgeArt.arts["moon"]!!, ForgeArt.pal('a' to 0xFFE8ECF2L.toInt(), 'w' to 0xFFB8C2CCL.toInt()))
         sprite("Cartoon Sun", "Cartoon Sun.png", "Sunny day, 16×16", ForgeArt.arts["sun"]!!, ForgeArt.pal('g' to 0xFFFFC93CL.toInt(), 'w' to 0xFFFFE88AL.toInt()))
@@ -363,7 +365,7 @@ object AssetForge {
         sprite("Iron Gear", "Iron Gear.png", "Machine part, 16×16", ForgeArt.arts["gear"]!!, cAB(STEEL.first, STEEL.second.toInt()))
         sprite("Power Cell", "Power Cell.png", "Sci-fi battery, 16×16", ForgeArt.arts["battery"]!!, ForgeArt.pal('a' to 0xFF3A3F4EL.toInt(), 'w' to 0xFF6EE2FFL.toInt(), 'g' to 0xFF6EE2FFL.toInt()))
         sprite("Logic Chip", "Logic Chip.png", "Circuit brain, 16×16", ForgeArt.arts["chip"]!!, ForgeArt.pal('a' to 0xFF2E5E3EL.toInt(), 'w' to 0xFF6EE2A8L.toInt()))
-        for ((name, cols) in listOf("Gold Ore" to GOLD, "Silver Ore" to SILVER, "Crystal Ore" to (0xFF7AC2E2.toInt() to 0xFF3E7A9C)))
+        for ((name, cols) in listOf("Gold Ore" to GOLD, "Silver Ore" to SILVER, "Crystal Ore" to (0xFF7AC2E2.toInt() to 0xFF3E7A9C.toInt())))
             sprite(name, "$name.png", "Mineable rock, 16×16", ForgeArt.arts["ore"]!!, ForgeArt.pal('a' to 0xFF9AA2AEL.toInt(), 'w' to 0xFFC9D4DFL.toInt(), 'g' to cols.first.toInt()))
         sprite("Ship Anchor", "Ship Anchor.png", "Nautical, 16×16", ForgeArt.arts["anchor"]!!, cAB(BRONZE.first, BRONZE.second))
         sprite("Wood Bucket", "Wood Bucket.png", "Handy pail, 16×16", ForgeArt.arts["bucket"]!!, cAB(WOODP.first, WOODP.second.toInt()))
@@ -377,8 +379,8 @@ object AssetForge {
         sprite("Magic Portal", "Magic Portal.png", "Warp gate, 16×16", ForgeArt.arts["portal"]!!, ForgeArt.pal('a' to 0xFF5E2E9CL.toInt(), 'A' to 0xFF3E1E6EL.toInt(), 'g' to 0xFFB07AFFL.toInt(), 'w' to 0xFFE8DFFF.toInt()))
 
         // ------------------------------------------------------------ UI kit (pixel)
-        for ((name, cols) in listOf("Green" to (0xFF4EC24E.toInt() to 0xFF2E8C2E), "Red" to (0xFFE24E4E.toInt() to 0xFF9C2A2A),
-                "Blue" to (0xFF4E7AE2.toInt() to 0xFF2A4E9C), "Gold" to (0xFFE2B23B.toInt() to 0xFF9C7A12)))
+        for ((name, cols) in listOf("Green" to (0xFF4EC24E.toInt() to 0xFF2E8C2E.toInt()), "Red" to (0xFFE24E4E.toInt() to 0xFF9C2A2A.toInt()),
+                "Blue" to (0xFF4E7AE2.toInt() to 0xFF2A4E9C.toInt()), "Gold" to (0xFFE2B23B.toInt() to 0xFF9C7A12.toInt())))
             sprite("$name UI Button", "$name UI Button.png", "$name 9-slice style button, 16×16", ForgeArt.arts["button"]!!, cAB(cols.first, cols.second))
         sprite("Dark Panel", "Dark Panel.png", "Dark UI panel, 16×16", ForgeArt.arts["panel"]!!, ForgeArt.pal('a' to 0xFF2E3238L.toInt(), 'w' to 0xFF4E5A6EL.toInt()))
         sprite("Light Panel", "Light Panel.png", "Light UI panel, 16×16", ForgeArt.arts["panel"]!!, ForgeArt.pal('a' to 0xFFE8E4D8L.toInt(), 'w' to 0xFFF8F6F0L.toInt()))
@@ -463,14 +465,14 @@ object AssetForge {
         // ------------------------------------------------------------ sounds
         sfx("Coin Double", "forge_coin2.wav", "Two-coin pickup chime") { S.run { wav { tone(0f, .07f, 1047f, 1047f, .45f, 1); tone(.06f, .09f, 1319f, 1319f, .45f, 1); tone(.14f, .22f, 1568f, 1568f, .45f, 1) } } }
         sfx("Gem Collect", "forge_gem.wav", "Crystal sparkle") { S.run { wav { tone(0f, .3f, 1976f, 2637f, .35f); tone(.02f, .25f, 2637f, 3136f, .2f) } } }
-        sfx("Extra Life", "forge_life.wav", "Happy rising jingle") { S.run { arp(0f, .09f, .4f, 1, 523f, 659f, 784f, 1047f) } }
-        sfx("Level Up", "forge_level.wav", "Fanfare run") { S.run { arp(0f, .11f, .5f, 1, 392f, 523f, 659f, 784f, 1047f) } }
-        sfx("Quest Complete", "forge_quest.wav", "Golden resolve") { S.run { arp(0f, .13f, .45f, 0, 523f, 659f, 784f, 659f, 1047f) } }
+        sfx("Extra Life", "forge_life.wav", "Happy rising jingle") { S.run { wav { arp(0f, .09f, .4f, 1, 523f, 659f, 784f, 1047f) } } }
+        sfx("Level Up", "forge_level.wav", "Fanfare run") { S.run { wav { arp(0f, .11f, .5f, 1, 392f, 523f, 659f, 784f, 1047f) } } }
+        sfx("Quest Complete", "forge_quest.wav", "Golden resolve") { S.run { wav { arp(0f, .13f, .45f, 0, 523f, 659f, 784f, 659f, 1047f) } } }
         sfx("Achievement", "forge_achieve.wav", "Badge unlock") { S.run { wav { tone(0f, .08f, 880f, 880f, .4f, 2); tone(.1f, .3f, 1760f, 1760f, .4f, 0) } } }
         sfx("Warp Out", "forge_warp.wav", "Descending teleport") { S.run { wav { tone(0f, .4f, 1200f, 180f, .45f, 2); noise(.05f, .3f, .18f, .5f) } } }
         sfx("Teleport In", "forge_tele.wav", "Ascending teleport") { S.run { wav { tone(0f, .35f, 200f, 1400f, .45f, 2); tone(.1f, .2f, 2000f, 2600f, .2f) } } }
         sfx("Phase Shift", "forge_phase.wav", "Ghostly pass-through") { S.run { wav { tone(0f, .3f, 600f, 900f, .3f, 0); tone(.05f, .3f, 610f, 890f, .2f, 2) } } }
-        sfx("Heal", "forge_heal.wav", "Warm recovery") { S.run { arp(0f, .08f, .35f, 0, 659f, 784f, 988f) } }
+        sfx("Heal", "forge_heal.wav", "Warm recovery") { S.run { wav { arp(0f, .08f, .35f, 0, 659f, 784f, 988f) } } }
         sfx("Player Hurt", "forge_hurt.wav", "Pained grunt-ish drop") { S.run { wav { tone(0f, .2f, 440f, 160f, .5f, 1); noise(0f, .12f, .2f, .4f) } } }
         sfx("Critical Hit", "forge_crit.wav", "Sharp impact") { S.run { wav { tone(0f, .12f, 220f, 90f, .6f, 1); noise(0f, .1f, .35f, .7f); tone(.02f, .25f, 1568f, 392f, .3f) } } }
         sfx("Dodge", "forge_dodge.wav", "Quick swish") { S.run { wav { noise(0f, .18f, .3f, .9f); tone(0f, .12f, 900f, 1400f, .18f) } } }
@@ -705,6 +707,10 @@ object AssetForge {
         else if (step == 1) {
             for (k in 0 until 6) { val a = PI / 3 * k; p.line(11, 8, (11 + cos(a) * 4.5f).toInt(), (8 + sin(a) * 4.5f).toInt(), GOLD.first.toInt()) }
             p.disc(11f, 8f, 1.4f, W)
+        } else if (step == 2) {
+            p.ring(11f, 8f, 2.2f, 0.9f, GOLD.first.toInt())
+            p.disc(11f, 8f, 0.9f, W)
+            for (k in 0 until 4) { val a = PI / 2 * k + 0.4f; p.disc((11f + cos(a) * 3.2f).toFloat(), (8f + sin(a) * 3.2f).toFloat(), 0.7f, G) }
         }
         return p
     }
@@ -734,7 +740,11 @@ object AssetForge {
 
     private fun lightning(step: Int): Px {
         val p = Px(16, 16)
-        if (step == 1) {
+        if (step == 0) {
+            p.line(12, 3, 9, 7, 0xFF5A6DBE.toInt())
+            p.line(9, 7, 11, 11, 0xFF5A6DBE.toInt())
+            p.line(11, 11, 7, 14, 0xFF5A6DBE.toInt())
+        } else if (step == 1) {
             val rows = ForgeArt.arts.getValue("bolt")
             p.art(rows, ForgeArt.pal('w' to 0xFFE2EAFF.toInt(), 'a' to 0xFF8AA2FFL.toInt()))
         } else if (step == 2) {
@@ -807,7 +817,7 @@ object AssetForge {
             var x = 4
             while (x < 58) {
                 val w = 3 + r.nextInt(4)
-                val col = intArrayOf(0xFFB03B4E, 0xFF3B5EB0, 0xFF4E9C3E, 0xFFC2904E, 0xFF7A4EA2)[r.nextInt(5)].toInt()
+                val col = intArrayOf(0xFFB03B4E.toInt(), 0xFF3B5EB0.toInt(), 0xFF4E9C3E.toInt(), 0xFFC2904E.toInt(), 0xFF7A4EA2.toInt())[r.nextInt(5)]
                 p.rect(x, y0 + 1 + r.nextInt(2), x + w, y0 + 15, col)
                 p.rect(x, y0 + 1 + r.nextInt(2), x + w, y0 + 15, darken(col.toLong()))
                 x += w + 1
@@ -821,7 +831,7 @@ object AssetForge {
         p.fill(0xFF10322AL.toInt())
         for (k in 0 until 26) {
             var x = r.nextInt(64); var y = r.nextInt(64)
-            val col = intArrayOf(0xFF2E8C6E, 0xFF3EBE8E, 0xFF1E5E4A)[r.nextInt(3)].toInt()
+            val col = intArrayOf(0xFF2E8C6E.toInt(), 0xFF3EBE8E.toInt(), 0xFF1E5E4A.toInt())[r.nextInt(3)]
             repeat(5 + r.nextInt(8)) {
                 if (r.nextBoolean()) x = (x + (if (r.nextBoolean()) 4 else -4)).coerceIn(0, 63)
                 else y = (y + (if (r.nextBoolean()) 4 else -4)).coerceIn(0, 63)
@@ -871,8 +881,8 @@ object AssetForge {
     private fun texTarget(): Px {
         val p = Px(64, 64)
         p.fill(0xFFE8E4D8L.toInt())
-        val cols = intArrayOf(0xFFE8E4D8, 0xFFD84040, 0xFFE8E4D8, 0xFFD84040, 0xFFB02020)
-        for (i in 0 until 5) p.disc(32f, 32f, (28 - i * 5.6f), cols[i].toInt())
+        val cols = intArrayOf(0xFFE8E4D8.toInt(), 0xFFD84040.toInt(), 0xFFE8E4D8.toInt(), 0xFFD84040.toInt(), 0xFFB02020.toInt())
+        for (i in 0 until 5) p.disc(32f, 32f, (28 - i * 5.6f), cols[i])
         p.disc(32f, 32f, 3f, 0xFFB02020L.toInt())
         return p
     }
