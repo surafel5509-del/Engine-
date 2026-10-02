@@ -261,6 +261,7 @@ class EngineGamesTest {
         assertEquals("Prison", m.engine.scene.name)
         assertTrue(m.visible("IntroPanel"))
         assertTrue(m.engine.ui.clickByName("StartDayBtn")); m.frames(45)
+        println("SIM freedom intro=${m.visible("IntroPanel")} modal=${m.engine.scripts.sendMessage(m.engine.scene.find("Game")!!, "isModal", null)} errors=${m.errors}")
         assertTrue(!m.visible("IntroPanel"))
         assertTrue(m.engine.scene.find("Player") != null)
         assertTrue(m.engine.scene.find("SewerHatch") != null)
