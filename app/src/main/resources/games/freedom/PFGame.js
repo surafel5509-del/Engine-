@@ -17,6 +17,7 @@ var captureLock = 0;
 var searchTimer = 150;
 var escaped = false;
 var ended = false;
+var introDone = false;
 
 var NAMES = {
     rope: "Rope", gloves: "Work gloves", shoes: "Quiet shoes", flashlight: "Flashlight", mask: "Dust mask",
@@ -37,7 +38,7 @@ function start() {
     if (storage.get("pf_music", true)) audio.playMusic("SpookyNight.song", 0.38);
     setTime();
     refreshHud();
-    prompt("Read the room. Your first move is not your last.");
+    toast("Read the room. Your first move is not your last.");
 }
 
 function update(dt) {
