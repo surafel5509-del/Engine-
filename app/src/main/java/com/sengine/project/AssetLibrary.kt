@@ -36,7 +36,7 @@ object AssetLibrary {
         fun installed(p: Project) = files.all { p.assetFile(it).exists() }
     }
 
-    val categories = listOf("All", "Packs", "Textures", "Sprites", "Sprite Sheets", "Sounds", "Shaders", "Scripts", "Blueprints", "3D Models", "Music", "UI Kit")
+    val categories = listOf("All", "Packs", "Textures", "Sprites", "Sprite Sheets", "Sounds", "Shaders", "Scripts", "Blueprints", "3D Models", "Mega Textures", "Mega Sprites", "Mega 3D Models", "Music", "UI Kit")
 
     private fun png(p: Project, name: String, b: Bitmap) {
         p.assetsDir.mkdirs()
@@ -141,6 +141,7 @@ object AssetLibrary {
             listOf("Low-Poly Tree", "Rock", "House", "Crystal", "Checker", "Grass Tile", "Stone", "Player3D", "Rotator", "Toon"))
         pack("VFX Pack", "Particles, fire, shaders and power-up sound",
             listOf("Soft Particle", "Spark", "Fire (6 frames)", "Dissolve", "Hit Flash", "Rainbow", "Hologram", "Power Up"))
+        list.addAll(MegaAssetLibrary.items)
         list.addAll(0, AssetPacksV3.packs(list))
         return list
     }

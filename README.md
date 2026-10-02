@@ -1,8 +1,26 @@
-# S Engine — v6 Studio Edition #
+# S Engine — v7 Unity Studio Edition #
+
+> **Upgrade note:** v7 keeps the Android-first, offline-capable editor while adding an adaptive Unity-style Studio shell, OpenGL ES 3.0 capability path with ES 2.0 fallback, a tween/event scripting API, and a large procedural Mega Asset Library.
 
 **S Engine** is a 2D **and 3D** game engine **and** full visual editor that runs entirely on an Android phone or tablet. Create a project, build scenes with a hierarchy / inspector / gizmos, write behaviours in **C++** or JavaScript in the built-in code editor, press **Play** to test immediately, then build a standalone APK on the device.
 
 > Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
+
+## 🚀 v7 Unity Studio upgrade
+
+- **Adaptive graphics:** requests an OpenGL ES 3.0 context and transparently falls back to ES 2.0; shaders are upgraded at runtime and the detected GPU/API is available to the editor.
+- **Studio shell:** graphite Unity-inspired chrome, working-blue selection, play-mode tint, saved Dark / Light / Midnight themes, and a Theme command in the editor menu.
+- **Tween system:** transform, scale, rotation, fade and punch tweens with Linear, Sine, Quad, Cubic, Back, Elastic and Bounce easing curves.
+- **Event bus:** scripts can publish and subscribe to decoupled gameplay events with `events.on`, `events.off`, `events.emit`, and `events.getNames`.
+- **Mega Asset Library:** 60 procedural tileable materials, 75 transparent sprites, and 65 low-poly OBJ models generated offline on-device, in addition to the original packs.
+
+Example:
+```js
+events.on("scoreChanged", function (score) { hud.setText("SCORE " + score); });
+tween.move(player, 4, 2, 0.6, "sineOut");
+tween.punch("Pickup", 1.35, 0.25);
+events.emit("scoreChanged", 100);
+```
 
 ## 🎬 v6 Model & Animation Studio (round 1)
 

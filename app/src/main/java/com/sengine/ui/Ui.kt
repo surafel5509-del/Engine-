@@ -14,25 +14,35 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** Monochrome "Noir" palette: pure black surfaces, white accents, status colours kept subtle. */
+/**
+ * S Engine 7 "Studio" palette — modelled on the Unity editor: graphite chrome, a working-blue
+ * accent and clear status colours. Values are `var` so [Themes] can hot-swap the entire IDE
+ * between dark / light at runtime.
+ */
 object C {
-    const val BG = 0xFF000000.toInt()
-    const val PANEL = 0xFF0F0F0F.toInt()
-    const val PANEL2 = 0xFF1E1E1E.toInt()
-    const val HEADER = 0xFF080808.toInt()
-    const val FIELD = 0xFF050505.toInt()
-    const val ACCENT = 0xFFF5F5F5.toInt()
-    const val ACCENT2 = 0xFFBDBDBD.toInt()
-    const val TEXT = 0xFFF2F2F2.toInt()
-    const val DIM = 0xFF8C8C8C.toInt()
-    const val SEL = 0xFF3A3A3A.toInt()
-    const val RED = 0xFFFF5A5A.toInt()
-    const val GREEN = 0xFF6EE7A8.toInt()
-    const val YELLOW = 0xFFF5D06B.toInt()
-    const val ORANGE = 0xFFFFA566.toInt()
-    const val PURPLE = 0xFFC4B5FD.toInt()
-    const val PINK = 0xFFF9A8D4.toInt()
-    const val BORDER = 0xFF2B2B2B.toInt()
+    // ---- surfaces
+    var BG = 0xFF1B1B1D.toInt()        // app root / deepest level
+    var PANEL = 0xFF27272B.toInt()     // side panels (hierarchy, inspector)
+    var PANEL2 = 0xFF3A3A40.toInt()    // cards, raised buttons
+    var HEADER = 0xFF414147.toInt()    // toolbar, panel headers, tabs
+    var FIELD = 0xFF202024.toInt()     // text inputs
+    // ---- accents
+    var ACCENT = 0xFF4C80E0.toInt()    // Unity working blue
+    var ACCENT2 = 0xFF7EB1F2.toInt()   // lighter blue for icons on dark
+    var TEXT = 0xFFD2D2D6.toInt()
+    var DIM = 0xFF8B8B93.toInt()
+    var SEL = 0xFF3F5D82.toInt()       // Unity-style selection blue
+    var BORDER = 0xFF111114.toInt()
+    // ---- status
+    var RED = 0xFFE5534B.toInt()
+    var GREEN = 0xFF57AB5A.toInt()
+    var YELLOW = 0xFFE3B341.toInt()
+    var ORANGE = 0xFFE0823D.toInt()
+    var PURPLE = 0xFFB083F0.toInt()
+    var PINK = 0xFFEC8FC3.toInt()
+
+    /** Play-mode tint for the toolbar (Unity tints the editor while playing). */
+    val PLAY_TINT = 0xFF2A4116.toInt()
 
     /** True when [c] is a light colour (text on it must be dark). */
     fun isLight(c: Int): Boolean {
@@ -41,6 +51,46 @@ object C {
     }
     /** Readable foreground for a background: black on light, the requested colour otherwise. */
     fun on(bg: Int, fg: Int): Int = if (isLight(bg) && isLight(fg)) 0xFF000000.toInt() else fg
+}
+
+/** Runtime theme store (Unity-style dark editor by default, light / midnight variants too). */
+object Themes {
+    const val KEY = "sengine.theme"
+    const val DARK = 0
+    const val LIGHT = 1
+    const val MIDNIGHT = 2
+
+    val names = arrayOf("Unity Dark", "Light", "Midnight")
+
+    fun current(ctx: Context): Int =
+        ctx.getSharedPreferences("sengine", Context.MODE_PRIVATE).getInt(KEY, DARK)
+
+    fun apply(ctx: Context, theme: Int) {
+        when (theme) {
+            LIGHT -> {
+                C.BG = 0xFFF1F1F4.toInt(); C.PANEL = 0xFFE7E7EC.toInt(); C.PANEL2 = 0xFFD6D6DD.toInt()
+                C.HEADER = 0xFFDBDBE2.toInt(); C.FIELD = 0xFFFFFFFF.toInt()
+                C.ACCENT = 0xFF2F6BD8.toInt(); C.ACCENT2 = 0xFF3D6FBE.toInt()
+                C.TEXT = 0xFF1D1D21.toInt(); C.DIM = 0xFF67676F.toInt(); C.SEL = 0xFFBFD4F2.toInt(); C.BORDER = 0xFFB9B9C2.toInt()
+            }
+            MIDNIGHT -> {
+                C.BG = 0xFF0A0C10.toInt(); C.PANEL = 0xFF10131A.toInt(); C.PANEL2 = 0xFF1B2029.toInt()
+                C.HEADER = 0xFF161A22.toInt(); C.FIELD = 0xFF0D0F14.toInt()
+                C.ACCENT = 0xFF3D9BE9.toInt(); C.ACCENT2 = 0xFF6FC3FF.toInt()
+                C.TEXT = 0xFFC9D4E2.toInt(); C.DIM = 0xFF6C7A8C.toInt(); C.SEL = 0xFF24425F.toInt(); C.BORDER = 0xFF060809.toInt()
+            }
+            else -> {
+                C.BG = 0xFF1B1B1D.toInt(); C.PANEL = 0xFF27272B.toInt(); C.PANEL2 = 0xFF3A3A40.toInt()
+                C.HEADER = 0xFF414147.toInt(); C.FIELD = 0xFF202024.toInt()
+                C.ACCENT = 0xFF4C80E0.toInt(); C.ACCENT2 = 0xFF7EB1F2.toInt()
+                C.TEXT = 0xFFD2D2D6.toInt(); C.DIM = 0xFF8B8B93.toInt(); C.SEL = 0xFF3F5D82.toInt(); C.BORDER = 0xFF111114.toInt()
+            }
+        }
+        ctx.getSharedPreferences("sengine", Context.MODE_PRIVATE).edit().putInt(KEY, theme).apply()
+    }
+
+    /** Applies the saved theme and returns its id. */
+    fun restore(ctx: Context): Int { val t = current(ctx); apply(ctx, t); return t }
 }
 
 fun Context.dp(v: Number): Int =
