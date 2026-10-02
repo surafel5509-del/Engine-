@@ -58,8 +58,8 @@ class EngineGamesTest {
 
     @Test
     fun allGameTemplatesRegistered() {
-        assertEquals(6, Games.templates.size)
-        assertTrue(Templates.all.size >= 11)
+        assertEquals(7, Games.templates.size)
+        assertTrue(Templates.all.size >= 12)
     }
 
     @Test
@@ -246,6 +246,27 @@ class EngineGamesTest {
         assertEquals(3, r.engine.scene.objects.count { it.tag == "EnemySpawn" && it.isActiveInHierarchy() })
         assertTrue(r.text("LevelText").contains("3"))
         assertTrue(r.errors.toString(), r.errors.isEmpty())
+    }
+
+    @Test
+    fun priceOfFreedomBootsWithEditableSystems() {
+        val p = project(Games.templates.first { it.name.startsWith("Price of Freedom") }.name)
+        assertEquals("Menu", p.startScene)
+        assertTrue(p.listScenes().containsAll(listOf("Menu", "Prison")))
+        assertTrue(p.listAssets().containsAll(listOf("PFGame.js", "PFPlayer.js", "PrisonPulse.glsl", "PrisonerWalk.anim")))
+        assertEquals("Price of Freedom", p.loadControls().name)
+        val m = start(p, "Menu")
+        m.frames(8)
+        assertTrue(m.engine.ui.clickByName("NewCampaignBtn")); m.frames(8)
+        assertEquals("Prison", m.engine.scene.name)
+        assertTrue(m.visible("IntroPanel"))
+        assertTrue(m.engine.ui.clickByName("StartDayBtn")); m.frames(45)
+        assertTrue(!m.visible("IntroPanel"))
+        assertTrue(m.engine.scene.find("Player") != null)
+        assertTrue(m.engine.scene.find("SewerHatch") != null)
+        assertTrue(m.engine.scene.find("InventoryPanel") != null)
+        assertTrue(m.text("TimeText").contains("DAY 1"))
+        assertTrue(m.errors.toString(), m.errors.isEmpty())
     }
 
     @Test

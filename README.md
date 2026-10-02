@@ -44,6 +44,7 @@ The 3D Model Editor is now a small Blender-style studio. The heavy mesh work run
 * **Sky Strike** – 2D shoot 'em up with 3 levels, bosses and stars
 * **Dead Zone** – 2D twin-stick zombie survival with waves, weapons and upgrades
 * **Iron Tanks** – 2D top-down tank battle *(new)*
+* **Price of Freedom** – 2D prison-escape immersive sim: real-time schedule, guard perception, relationships, searches, case evidence and five escape routes *(new)*
 * **Turbo Rally** – 3D racing, 2 maps × 3 roads, AI drivers
 * **MiniCraft** – 3D voxel sandbox
 * **Strike Force** – 3D first-person shooter *(new)*
