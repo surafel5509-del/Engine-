@@ -259,6 +259,7 @@ class EngineGamesTest {
         m.frames(8)
         assertTrue(m.engine.ui.clickByName("NewCampaignBtn")); m.frames(8)
         assertEquals("Prison", m.engine.scene.name)
+        assertTrue("freedom boot errors: " + m.errors, m.errors.isEmpty())
         assertTrue(m.visible("IntroPanel"))
         assertTrue(m.engine.ui.clickByName("StartDayBtn")); m.frames(45)
         println("SIM freedom intro=${m.visible("IntroPanel")} modal=${m.engine.scripts.sendMessage(m.engine.scene.find("Game")!!, "isModal", null)} errors=${m.errors}")
