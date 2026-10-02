@@ -106,9 +106,20 @@ class Input {
         // keyboard shortcuts for common buttons
         if (KeyEvent.KEYCODE_SPACE in keys || KeyEvent.KEYCODE_BUTTON_A in keys) buttons["A"] = true
         if (KeyEvent.KEYCODE_ENTER in keys || KeyEvent.KEYCODE_BUTTON_B in keys) buttons["B"] = true
-        if (KeyEvent.KEYCODE_F in keys || KeyEvent.KEYCODE_BUTTON_R1 in keys) buttons["Fire"] = true
-        if (KeyEvent.KEYCODE_R in keys) buttons["Reload"] = true
-        if (KeyEvent.KEYCODE_SHIFT_LEFT in keys) buttons["Brake"] = true
+        if (KeyEvent.KEYCODE_F in keys || KeyEvent.KEYCODE_BUTTON_R1 in keys) {
+            buttons["Fire"] = true
+            buttons["Search"] = true
+        }
+        if (KeyEvent.KEYCODE_R in keys) { buttons["Reload"] = true; buttons["Use"] = true }
+        if (KeyEvent.KEYCODE_E in keys) buttons["Interact"] = true
+        if (KeyEvent.KEYCODE_Q in keys) buttons["PickUp"] = true
+        if (KeyEvent.KEYCODE_C in keys) buttons["Hide"] = true
+        if (KeyEvent.KEYCODE_TAB in keys) buttons["Inventory"] = true
+        if (KeyEvent.KEYCODE_M in keys) buttons["Map"] = true
+        if (KeyEvent.KEYCODE_T in keys) buttons["Time"] = true
+        if (KeyEvent.KEYCODE_J in keys) buttons["Journal"] = true
+        if (KeyEvent.KEYCODE_CTRL_LEFT in keys || KeyEvent.KEYCODE_CTRL_RIGHT in keys) buttons["Crouch"] = true
+        if (KeyEvent.KEYCODE_SHIFT_LEFT in keys || KeyEvent.KEYCODE_SHIFT_RIGHT in keys) { buttons["Brake"] = true; buttons["Run"] = true }
         if (KeyEvent.KEYCODE_W in keys || KeyEvent.KEYCODE_DPAD_UP in keys) buttons["Gas"] = true
         sticks.clear(); for ((k, v) in rawSticks) sticks[k] = floatArrayOf(v[0], v[1])
 

@@ -18,6 +18,7 @@ object Games {
             Templates.Template("MiniCraft (3D Voxel)", "Complete voxel sandbox: infinite-feeling worlds, first-person building, hotbar, fly mode, day/night, animals and saved worlds.") { CraftGame.build(it) },
             Templates.Template("Strike Force (3D FPS)", "Complete first-person shooter: desert compound + night raid, patrolling soldiers with line-of-sight AI, rifle/shotgun/pistol with ADS and headshots, grenades, exploding barrels, extraction.") { FpsGame.build(it) },
             Templates.Template("Iron Tanks (2D Tank Battle)", "Complete top-down tank war: aiming turret, destructible walls, rivers and bushes, 3 enemy tank types, HQ defence, HE shells, power-ups, 3 missions with stars.") { TankGame.build(it) },
+            Templates.Template("Price of Freedom (2D Prison Escape)", "A complete realistic prison escape immersive sim: real-time schedule, guard AI, relationships, searches, energy and health, evidence, five escape routes, custom controls, shaders and editable UI.") { PriceFreedomGame.build(it) },
         )
     }
 }

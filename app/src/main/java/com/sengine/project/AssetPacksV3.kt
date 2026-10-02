@@ -72,6 +72,14 @@ object AssetPacksV3 {
         l += tex("Shield Bubble", "Shield.png", "Energy shield, 64×64", "Sprites") { shield() }
         l += tex("Star", "Star.png", "Golden star, 64×64", "Sprites") { star() }
         l += tex("Crosshair", "Crosshair.png", "Aim reticle, 64×64", "Sprites") { crosshair() }
+        // Prison escape set — custom, tintable top-down assets for Price of Freedom and user projects.
+        l += tex("Prisoner (top-down)", "Prisoner.png", "Top-down inmate with a muted uniform, 64×64", "Sprites") { prisoner() }
+        l += tex("Prison Guard (top-down)", "PrisonGuard.png", "Top-down patrol guard in olive uniform, 64×64", "Sprites") { prisonGuard() }
+        l += tex("Security Camera", "SecurityCamera.png", "Wall-mounted surveillance camera, 64×64", "Sprites") { securityCamera() }
+        l += tex("Evidence File", "Evidence.png", "Case evidence dossier pickup, 64×64", "Sprites") { evidenceFile() }
+        l += tex("Rope Coil", "Rope.png", "Coiled escape rope pickup, 64×64", "Sprites") { ropeCoil() }
+        l += tex("Prison Gate", "PrisonGate.png", "Heavy barred gate / checkpoint, 96×96", "Sprites") { prisonGate() }
+        l += tex("Prison Map", "PrisonMap.png", "Folded prison layout map pickup, 64×64", "Sprites") { prisonMap() }
         // ------------------------------------------------------------ UI kit
         l += tex("UI Panel (dark)", "UIPanelDark.png", "Rounded glassy panel, 256×160", "UI Kit") { uiPanel() }
         l += tex("UI Button (blue)", "UIButtonBlue.png", "Glossy button, 192×64", "UI Kit") { uiButton(0xFF5B7CFF.toInt(), 0xFF22D3EE.toInt()) }
@@ -250,6 +258,61 @@ object AssetPacksV3 {
         p.color = col; c.drawCircle(32f, 32f, 11f, p)
         p.color = 0xFFD32F2F.toInt(); c.drawCircle(38f, 28f, 2.2f, p); c.drawCircle(38f, 36f, 2.2f, p)
         return b
+    }
+    /** Dedicated prison sprites: painted with Canvas so they are editable assets, not placeholders. */
+    private fun prisoner(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint()
+        p.color = 0x33000000; c.drawCircle(33f, 36f, 22f, p)
+        p.color = 0xFF4A5155.toInt(); c.drawOval(RectF(13f, 14f, 51f, 53f), p)
+        p.color = 0xFF30363A.toInt(); c.drawRoundRect(RectF(12f, 28f, 28f, 37f), 4f, 4f, p); c.drawRoundRect(RectF(36f, 28f, 52f, 37f), 4f, 4f, p)
+        p.color = 0xFFC58E6A.toInt(); c.drawCircle(32f, 29f, 10f, p)
+        p.color = 0xFF20272B.toInt(); c.drawArc(RectF(22f, 18f, 42f, 34f), 180f, 180f, true, p)
+        p.color = 0xFF90989B.toInt(); c.drawRect(18f, 41f, 46f, 44f, p); c.drawRect(18f, 46f, 46f, 49f, p)
+        return b
+    }
+    private fun prisonGuard(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint()
+        p.color = 0x44000000; c.drawCircle(33f, 36f, 22f, p)
+        p.color = 0xFF4B5D3C.toInt(); c.drawOval(RectF(12f, 12f, 52f, 54f), p)
+        p.color = 0xFF263127.toInt(); c.drawRoundRect(RectF(31f, 5f, 55f, 13f), 3f, 3f, p); c.drawRoundRect(RectF(43f, 10f, 54f, 17f), 2f, 2f, p)
+        p.color = 0xFFCAA17E.toInt(); c.drawCircle(30f, 27f, 9f, p)
+        p.color = 0xFF263127.toInt(); c.drawArc(RectF(20f, 16f, 40f, 32f), 180f, 180f, true, p)
+        p.color = 0xFF1C2520.toInt(); c.drawRoundRect(RectF(34f, 27f, 61f, 35f), 3f, 3f, p)
+        p.color = 0xFFE8D59B.toInt(); c.drawCircle(22f, 41f, 3f, p)
+        return b
+    }
+    private fun securityCamera(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint(0xFF30383D.toInt())
+        c.drawRoundRect(RectF(3f, 27f, 18f, 37f), 3f, 3f, p); c.drawRect(14f, 17f, 30f, 47f, p)
+        p.color = 0xFF707A80.toInt(); c.save(); c.rotate(-22f, 34f, 32f); c.drawRoundRect(RectF(24f, 18f, 58f, 46f), 7f, 7f, p); c.restore()
+        p.color = 0xFF151A1D.toInt(); c.drawCircle(46f, 31f, 9f, p)
+        p.color = 0xFFFF5252.toInt(); c.drawCircle(48f, 31f, 3f, p); return b
+    }
+    private fun evidenceFile(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint(0xFFDDD2B5.toInt())
+        c.drawRoundRect(RectF(12f, 7f, 53f, 57f), 3f, 3f, p); p.color = 0xFFB13D36.toInt(); c.drawRect(12f, 7f, 53f, 15f, p)
+        p.color = 0xFF5B4A3D.toInt(); p.strokeWidth = 3f
+        c.drawLine(20f, 25f, 46f, 25f, p); c.drawLine(20f, 33f, 43f, 33f, p); c.drawLine(20f, 41f, 39f, 41f, p)
+        p.color = 0xFFB13D36.toInt(); p.style = Paint.Style.STROKE; p.strokeWidth = 3f; c.drawCircle(43f, 47f, 7f, p); p.style = Paint.Style.FILL
+        return b
+    }
+    private fun ropeCoil(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint(0xFFB9925B.toInt()).apply { style = Paint.Style.STROKE; strokeWidth = 6f }
+        c.drawCircle(32f, 32f, 21f, p); c.drawCircle(32f, 32f, 13f, p); c.drawCircle(32f, 32f, 5f, p)
+        p.style = Paint.Style.FILL; c.drawRoundRect(RectF(33f, 8f, 42f, 31f), 4f, 4f, p); return b
+    }
+    private fun prisonGate(): Bitmap {
+        val b = bmp(96); val c = Canvas(b); val p = paint(0xFF1E2528.toInt())
+        c.drawRoundRect(RectF(5f, 5f, 91f, 91f), 5f, 5f, p); p.color = 0xFF7E8686.toInt()
+        for (x in 15..80 step 13) c.drawRect(x.toFloat(), 10f, x + 6f, 86f, p)
+        c.drawRect(10f, 18f, 86f, 24f, p); c.drawRect(10f, 72f, 86f, 78f, p)
+        p.color = 0xFFB89245.toInt(); c.drawCircle(56f, 48f, 5f, p); return b
+    }
+    private fun prisonMap(): Bitmap {
+        val b = bmp(64); val c = Canvas(b); val p = paint(0xFFD9D0B8.toInt())
+        c.drawRoundRect(RectF(7f, 8f, 57f, 56f), 4f, 4f, p); p.color = 0xFF5B6870.toInt(); p.style = Paint.Style.STROKE; p.strokeWidth = 3f
+        c.drawRect(15f, 16f, 31f, 29f, p); c.drawRect(37f, 16f, 49f, 29f, p); c.drawRect(15f, 36f, 25f, 48f, p); c.drawRect(32f, 36f, 49f, 48f, p)
+        p.color = 0xFFC34034.toInt(); p.style = Paint.Style.FILL; c.drawCircle(44f, 43f, 3f, p); return b
     }
     private fun tank(): Bitmap {
         val b = bmp(64); val c = Canvas(b); val p = paint()
