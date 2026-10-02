@@ -42,6 +42,13 @@ function start() {
 
 function update(dt) {
     if (ended) return;
+    // The UI button uses the engine's built-in hide action, then this director opens play on the next frame.
+    // Keeping the state transition here means UI Creator edits cannot strand the player in the briefing.
+    if (!introDone && !scene.find("IntroPanel").active) {
+        introDone = true;
+        modal = false;
+        banner("DAY ONE — OBSERVE BEFORE YOU ACT", 2.4);
+    }
     // The campaign clock intentionally follows real time: 60 seconds of play = one prison minute.
     clockMinutes += dt / 60.0;
     if (clockMinutes >= 1440) {

@@ -239,7 +239,7 @@ internal object PriceFreedomGame {
         val intro = GameKit.panel(s, "IntroPanel", 0f, 0f, 8.5f, 5.4f, 0xF00B1010, border = 0x889B7A42, corner = 0.18f)
         GameKit.text(s, "IntroTitle", "DAY ONE", 0f, 1.8f, 0.72f, 0xFFE2BF70, intro)
         GameKit.text(s, "IntroBody", "You are innocent. The prison is not.\n\nObserve routines, search quietly and build trust.\nFind your case evidence before choosing an escape route.\n\nMove with WASD / joystick. Press E / INTERACT near people and objects.", 0f, 0.22f, 0.31f, 0xFFD5D9D3, intro)
-        GameKit.button(s, "StartDayBtn", "Enter the yard", 0f, -1.95f, 4.4f, 0.83f, 0xFFB07D31, "call:closeIntro", intro)
+        GameKit.button(s, "StartDayBtn", "Enter the yard", 0f, -1.95f, 4.4f, 0.83f, 0xFFB07D31, "hide:IntroPanel", intro)
 
         fun modalPanel(name: String, title: String, w: Float = 8.8f, h: Float = 6.2f): Pair<com.sengine.engine.core.GameObject, com.sengine.engine.core.GameObject> {
             val panel = GameKit.panel(s, name, 0f, 0f, w, h, 0xF00B1010, border = 0x889B7A42, corner = 0.18f).off()
