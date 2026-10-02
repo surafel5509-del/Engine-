@@ -342,4 +342,9 @@ function win(route) {
     ui.setText("VictoryText", "You escaped through " + names[route] + " on day " + day + ".\n\nThe evidence is out. Your name can be cleared.\n\nKnowledge gathered: " + knowledge + "\nAllies who trusted you: " + friends + "\nSuspicion at escape: " + Math.round(suspicion) + "%");
     ui.show("VictoryPanel");
 }
+// UI actions also broadcast onUIClick. Keep this small fallback so the first-day prompt remains
+// responsive even when a project owner rewires the UI Creator button action.
+function onUIClick(name) {
+    if (name == "StartDayBtn") closeIntro();
+}
 function onStop() { audio.stopMusic(); }
