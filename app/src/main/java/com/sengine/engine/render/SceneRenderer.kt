@@ -50,6 +50,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     private val rnd = java.util.Random()
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        com.sengine.engine.render.Gfx.detect()
         Meshes.contextGen++
         voxelMeshes.clear()
         shaders.init()

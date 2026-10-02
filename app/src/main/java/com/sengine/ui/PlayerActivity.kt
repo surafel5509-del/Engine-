@@ -69,11 +69,7 @@ class PlayerActivity : AppCompatActivity() {
         })
 
         val root = FrameLayout(this)
-        glView = GLSurfaceView(this).apply {
-            setEGLContextClientVersion(2)
-            setRenderer(SceneRenderer(engine, null))
-            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-        }
+        glView = com.sengine.engine.render.Gfx.surface(this, SceneRenderer(engine, null))
         glView.setOnTouchListener { v, e -> forwardTouch(v, e); true }
         root.addView(glView)
         root.addView(GameControlsView(this) { engine.input }.also { it.projectLayout = project.loadControls() })

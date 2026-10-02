@@ -129,6 +129,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     // ================================================================== lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Themes.restore(this)
         project = ProjectManager.open(this, intent.getStringExtra("project") ?: run { finish(); return })
         val sceneName = if (project.sceneExists(project.startScene)) project.startScene
         else project.listScenes().firstOrNull() ?: "Main"
@@ -264,11 +265,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
 
         // viewport
         val vp = FrameLayout(this)
-        glView = GLSurfaceView(this).apply {
-            setEGLContextClientVersion(2)
-            setRenderer(SceneRenderer(engine, state))
-            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-        }
+        glView = com.sengine.engine.render.Gfx.surface(this, SceneRenderer(engine, state))
         controller = ViewportController(this, engine, state)
         glView.setOnTouchListener(controller)
         vp.addView(glView)
@@ -641,7 +638,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             (if (state.showGrid) "Hide" else "Show") + " Grid",
             (if (state.showColliders) "Hide" else "Show") + " Colliders",
             "Snap: " + if (controller.snap) "ON" else "OFF",
-            "Toggle Bottom Panel", "Script API Reference", "About S Engine"
+            "Toggle Bottom Panel", "Theme: ${Themes.names[Themes.current(this)]}", "Script API Reference", "About S Engine"
         )
         entries.forEach { pm.menu.add(it) }
         pm.setOnMenuItemClickListener { item ->
@@ -672,6 +669,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t.endsWith("Colliders") -> state.showColliders = !state.showColliders
                 t.startsWith("Snap") -> controller.snap = !controller.snap
                 t == "Toggle Bottom Panel" -> toggle(bottomPanel)
+                t.startsWith("Theme:") -> MaterialAlertDialogBuilder(this)
+                    .setTitle("Editor Theme")
+                    .setSingleChoiceItems(Themes.names, Themes.current(this)) { d, which ->
+                        Themes.apply(this, which); d.dismiss(); recreate()
+                    }.setNegativeButton("Cancel", null).show()
                 t == "Script API Reference" -> showText("Script API", ScriptEditorActivity.API_DOC)
                 t.startsWith("About") -> showText("About S Engine",
                     "S Engine 3rd Edition\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
@@ -781,12 +783,20 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             card.addView(iv, lp(dp(56), dp(48)))
         } else {
             val (glyph, color) = when (kind) {
+                AssetKind.TEXTURE -> "IMG" to C.ACCENT2
                 AssetKind.SCRIPT -> (if (name.endsWith(".bp")) "BP" to 0xFF4FC3F7.toInt() else if (com.sengine.engine.script.ScriptSystem.isCpp(name)) "C++" to 0xFF9CDCFE.toInt() else "JS" to C.YELLOW)
                 AssetKind.SOUND -> "♪" to C.GREEN
                 AssetKind.SHADER -> "GLSL" to 0xFFE040FB.toInt()
                 AssetKind.ANIMATION -> "▶▶" to 0xFFFF8A65.toInt()
+                AssetKind.SONG -> "♪" to C.GREEN
                 AssetKind.MODEL -> "3D" to 0xFF80CBC4.toInt()
-                else -> "?" to C.DIM
+                AssetKind.VFX -> "VFX" to C.ORANGE
+                AssetKind.PREFAB -> "PFB" to C.PURPLE
+                AssetKind.MATERIAL -> "MAT" to C.YELLOW
+                AssetKind.PATH -> "PATH" to C.GREEN
+                AssetKind.TIMELINE -> "TL" to C.PINK
+                AssetKind.DATA -> "JSON" to C.DIM
+                null -> "?" to C.DIM
             }
             card.addView(label(glyph, 20f, color, true).apply { gravity = Gravity.CENTER }, lp(dp(56), dp(48)))
         }

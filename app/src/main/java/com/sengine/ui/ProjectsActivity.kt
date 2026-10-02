@@ -45,6 +45,7 @@ class ProjectsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Themes.restore(this)
         // Exported game: go straight to the player.
         com.sengine.export.GameRuntime.standaloneProject(this)?.let { game ->
             startActivity(Intent(this, PlayerActivity::class.java).putExtra("projectDir", game.dir.absolutePath).putExtra("standalone", true))

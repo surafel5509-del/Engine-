@@ -8,6 +8,11 @@ enum class AssetKind(val extensions: List<String>) {
     ANIMATION(listOf("anim")),
     MODEL(listOf("obj", "smodel")),
     SONG(listOf("song")),
+    VFX(listOf("vfx")),
+    PREFAB(listOf("prefab")),
+    MATERIAL(listOf("mat")),
+    PATH(listOf("path")),
+    TIMELINE(listOf("timeline")),
     DATA(listOf("json", "txt", "csv"));
 
     companion object {

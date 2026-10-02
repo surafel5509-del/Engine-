@@ -33,6 +33,7 @@ class AssetStoreActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Themes.restore(this)
         project = ProjectManager.open(this, intent.getStringExtra("project")!!)
         category = intent.getStringExtra("category") ?: "All"
 

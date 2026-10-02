@@ -173,7 +173,7 @@ class Engine(val project: Project, initialScene: Scene) {
 
         when (mode) {
             Mode.PLAY -> runFrame(dt)
-            Mode.EDIT -> { scene.updateTransforms(); updateParticles(dt); updateAnimators(dt, false); prepareVoxels(false); updateModelAnims(dt) }
+            Mode.EDIT -> { scene.updateTransforms(); updateParticles(dt); updateAnimators(dt, false); prepareVoxels(false); updateModelAnims(dt); tweens.update(dt) }
             Mode.PAUSED -> scene.updateTransforms()
         }
     }

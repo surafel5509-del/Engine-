@@ -549,3 +549,109 @@ class SConsole(private val engine: Engine) {
     fun warn(o: Any?) = engine.log(1, "⚠ " + Context.toString(o))
     fun error(o: Any?) = engine.log(2, "✖ " + Context.toString(o))
 }
+
+/**
+ * Tween API (S Engine 7): `tween.move(obj, 5, 2, 0.6, "sineOut")` — fire-and-forget animated
+ * transitions with easing, no update() code needed. Accepts an object reference or a name.
+ */
+class STween(private val engine: Engine, private val sys: ScriptSystem) {
+
+    private fun target(v: Any?): GameObject? = when (v) {
+        is SObject -> v.rawObject()
+        is GameObject -> v
+        is String -> engine.scene.find(v)
+        else -> null
+    } ?: run { engine.log(1, "tween: object not found"); null }
+
+    private fun ease(name: String?) = engine.tweens.ease(name ?: "sineInOut")
+
+    private fun cb(fn: Any?): (() -> Unit)? {
+        val f = fn as? org.mozilla.javascript.Function ?: return null
+        return { sys.callJs(f) }
+    }
+
+    fun move(obj: Any?, x: Double, y: Double, duration: Double): Any? = move(obj, x, y, duration, null, null)
+    fun move(obj: Any?, x: Double, y: Double, duration: Double, ease: String?): Any? = move(obj, x, y, duration, ease, null)
+    fun move(obj: Any?, x: Double, y: Double, duration: Double, ease: String?, onComplete: Any?): Any? {
+        val go = target(obj) ?: return null
+        engine.tweens.moveTo(go, x.toFloat(), y.toFloat(), null, duration.toFloat(), ease(ease), 0f, cb(onComplete))
+        return sys.toJs(go)
+    }
+
+    fun move3(obj: Any?, x: Double, y: Double, z: Double, duration: Double): Any? = move3(obj, x, y, z, duration, null, null)
+    fun move3(obj: Any?, x: Double, y: Double, z: Double, duration: Double, ease: String?): Any? = move3(obj, x, y, z, duration, ease, null)
+    fun move3(obj: Any?, x: Double, y: Double, z: Double, duration: Double, ease: String?, onComplete: Any?): Any? {
+        val go = target(obj) ?: return null
+        engine.tweens.moveTo(go, x.toFloat(), y.toFloat(), z.toFloat(), duration.toFloat(), ease(ease), 0f, cb(onComplete))
+        return sys.toJs(go)
+    }
+
+    fun scale(obj: Any?, s: Double, duration: Double): Any? = scale(obj, s, duration, null, null)
+    fun scale(obj: Any?, s: Double, duration: Double, ease: String?): Any? = scale(obj, s, duration, ease, null)
+    fun scale(obj: Any?, s: Double, duration: Double, ease: String?, onComplete: Any?): Any? {
+        val go = target(obj) ?: return null
+        engine.tweens.scaleTo(go, s.toFloat(), duration.toFloat(), ease(ease), 0f, cb(onComplete))
+        return sys.toJs(go)
+    }
+
+    fun rotate(obj: Any?, degrees: Double, duration: Double): Any? = rotate(obj, degrees, duration, null, null)
+    fun rotate(obj: Any?, degrees: Double, duration: Double, ease: String?): Any? = rotate(obj, degrees, duration, ease, null)
+    fun rotate(obj: Any?, degrees: Double, duration: Double, ease: String?, onComplete: Any?): Any? {
+        val go = target(obj) ?: return null
+        engine.tweens.rotateTo(go, degrees.toFloat(), duration.toFloat(), ease(ease), 0f, cb(onComplete))
+        return sys.toJs(go)
+    }
+
+    fun fade(obj: Any?, alpha: Double, duration: Double): Any? = fade(obj, alpha, duration, null, null)
+    fun fade(obj: Any?, alpha: Double, duration: Double, ease: String?): Any? = fade(obj, alpha, duration, ease, null)
+    fun fade(obj: Any?, alpha: Double, duration: Double, ease: String?, onComplete: Any?): Any? {
+        val go = target(obj) ?: return null
+        engine.tweens.fadeTo(go, alpha.toFloat(), duration.toFloat(), ease(ease), 0f, cb(onComplete))
+        return sys.toJs(go)
+    }
+
+    fun punch(obj: Any?, amount: Double, duration: Double): Any? {
+        val go = target(obj) ?: return null
+        val e = engine.tweens
+        val s = go.scaleX
+        e.add(go, com.sengine.engine.anim.TweenManager.Prop.SCALE, s, s * amount.toFloat(), duration * 0.5f, e.ease("quadOut"), 0f, null)
+        e.add(go, com.sengine.engine.anim.TweenManager.Prop.SCALE, s * amount.toFloat(), s, duration * 0.5f, e.ease("quadIn"), duration.toFloat() * 0.5f, null)
+        return sys.toJs(go)
+    }
+
+    fun kill(obj: Any?) { target(obj)?.let { engine.tweens.kill(it) } }
+    fun clear() = engine.tweens.clear()
+    fun getActive(): Double = engine.tweens.count.toDouble()
+    fun easings(): Any? = sys.newArray(engine.tweens.easings.keys.toList())
+}
+
+/**
+ * Global event bus (S Engine 7): decoupled messaging between scripts and scenes.
+ * `events.on("BossDied", fn)` … `events.emit("BossDied", {score: 100})`.
+ * Registrations reset when play mode starts.
+ */
+class SEvents(private val engine: Engine, private val sys: ScriptSystem) {
+    private val handlers = HashMap<String, ArrayList<org.mozilla.javascript.Function>>()
+
+    fun on(name: String, fn: Any?) {
+        val f = fn as? org.mozilla.javascript.Function ?: return
+        handlers.getOrPut(name) { ArrayList() }.add(f)
+    }
+
+    fun off(name: String) { handlers.remove(name) }
+
+    fun off(name: String, fn: Any?) {
+        val f = fn as? org.mozilla.javascript.Function ?: return
+        handlers[name]?.removeAll { it === f }
+    }
+
+    fun emit(name: String) = emit(name, null)
+    fun emit(name: String, data: Any?) {
+        val list = handlers[name] ?: return
+        engine.log(0, "event: $name")
+        for (f in list.toList()) sys.callJs(f, arrayOf(data ?: org.mozilla.javascript.Undefined.instance))
+    }
+
+    fun clear() = handlers.clear()
+    fun getNames(): Any? = sys.newArray(handlers.keys.toList())
+}

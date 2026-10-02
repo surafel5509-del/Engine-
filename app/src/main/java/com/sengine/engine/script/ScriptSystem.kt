@@ -35,6 +35,8 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     private var nativeHost: NativeHost? = null
     private val inputApi = SInput(engine)
     val voxelApi = SVoxel(engine, this)
+    val tweenApi = STween(engine, this)
+    val eventsApi = SEvents(engine, this)
 
     val isRunning get() = cx != null
 
@@ -60,6 +62,9 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
         put(g, "ui", SUI(engine))
         put(g, "platform", SPlatform(engine))
         put(g, "voxel", voxelApi)
+        put(g, "tween", tweenApi)
+        put(g, "events", eventsApi)
+        eventsApi.clear()
         c.evaluateString(g, PRELUDE, "prelude", 1, null)
         compiled.clear()
         if (NativeScripts.available) {
@@ -93,6 +98,13 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
     }
 
     fun wrap(go: GameObject): SObject = wrappers.getOrPut(go.id) { SObject(go, engine, this) }
+
+    /** Invokes a JavaScript callback from engine code on the script thread. */
+    fun callJs(fn: Function, args: Array<Any?> = emptyArray()): Any? {
+        val c = cx ?: return null
+        val g = global ?: return null
+        return try { fn.call(c, g, g, args) } catch (e: Throwable) { engine.log(2, "JS callback: ${e.message}") }
+    }
 
     fun toJs(go: GameObject?): Any? {
         val g = global ?: return null
