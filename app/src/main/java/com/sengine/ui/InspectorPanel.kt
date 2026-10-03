@@ -180,6 +180,18 @@ class InspectorPanel(private val act: EditorActivity, private val host: EditorHo
             }, lp(0, WRAP, 1f).margins(act.dp(4), act.dp(6), 0, 0))
             body.addView(row, lp(MATCH, WRAP))
         }
+        if (c is com.sengine.engine.core.Tilemap) {
+            val row = act.hbox()
+            row.addView(act.button("Edit Tilemap in Studio", C.ACCENT, 0xFF000000.toInt()) {
+                val intent = android.content.Intent(act, TilemapEditorActivity::class.java).apply {
+                    putExtra("project", host.project.dir.name)
+                    putExtra("scene", host.engine.scene.name)
+                    putExtra("selectedId", go.id)
+                }
+                act.startActivity(intent)
+            }, lp(MATCH, WRAP).margins(0, act.dp(6), 0, 0))
+            body.addView(row, lp(MATCH, WRAP))
+        }
         container.addView(body)
     }
 

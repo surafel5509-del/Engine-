@@ -132,9 +132,16 @@ class ScriptSystem(val engine: Engine) : PhysicsWorld.Listener {
             if (isCpp(comp.script)) { attachNative(go, comp); continue }
             val script = compiled[comp.script] ?: run {
                 val raw = engine.project.readAsset(comp.script)
-                val src = if (raw != null && comp.script.endsWith(".bp")) {
+                val src = if (raw == null) null
+                else if (comp.script.endsWith(".bp")) {
                     try { com.sengine.engine.blueprint.BlueprintCompiler.compile(com.sengine.engine.blueprint.Blueprint.parse(raw)) }
                     catch (e: Exception) { engine.log(2, "Blueprint ${comp.script}: ${e.message}"); null }
+                } else if (comp.script.endsWith(".gd")) {
+                    try { GdScriptTranspiler.transpile(raw) }
+                    catch (e: Exception) { engine.log(2, "GDScript ${comp.script}: ${e.message}"); null }
+                } else if (comp.script.endsWith(".lua")) {
+                    try { LuaScriptTranspiler.transpile(raw) }
+                    catch (e: Exception) { engine.log(2, "Lua ${comp.script}: ${e.message}"); null }
                 } else raw
                 if (src == null) {
                     engine.log(2, "Script not found: ${comp.script} (on ${go.name})")

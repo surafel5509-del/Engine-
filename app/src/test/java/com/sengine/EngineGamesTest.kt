@@ -58,13 +58,13 @@ class EngineGamesTest {
 
     @Test
     fun allGameTemplatesRegistered() {
-        assertEquals(6, Games.templates.size)
+        assertEquals(11, Games.templates.size)
         assertTrue(Templates.all.size >= 11)
     }
 
     @Test
     fun skyStrikeMenusAndCombat() {
-        val p = project(Games.templates[0].name)
+        val p = project(Games.templates.first { it.name.startsWith("Sky Strike") }.name)
         assertEquals("Menu", p.startScene)
         assertTrue(p.listScenes().containsAll(listOf("Menu", "Levels", "Level1", "Level2", "Level3")))
         val r = start(p, "Menu")
@@ -88,7 +88,7 @@ class EngineGamesTest {
 
     @Test
     fun deadZoneWavesAndUpgrades() {
-        val p = project(Games.templates[1].name)
+        val p = project(Games.templates.first { it.name.startsWith("Dead Zone") }.name)
         val r = start(p, "Arena")
         var upgrades = 0
         val pairs = HashMap<String, Int>()
@@ -128,7 +128,7 @@ class EngineGamesTest {
 
     @Test
     fun turboRallyRaceFinishes() {
-        val p = project(Games.templates[2].name)
+        val p = project(Games.templates.first { it.name.startsWith("Turbo Rally") }.name)
         assertEquals(1 + 6, p.listScenes().size)
         val r0 = start(p, "RallyMenu")
         r0.frames(5)
@@ -170,7 +170,7 @@ class EngineGamesTest {
 
     @Test
     fun miniCraftWorldBuildAndBreak() {
-        val p = project(Games.templates[3].name)
+        val p = project(Games.templates.first { it.name.startsWith("MiniCraft") }.name)
         val m = start(p, "CraftMenu")
         m.frames(5)
         assertTrue(m.engine.ui.clickByName("NewBtn")); m.frames(3)

@@ -130,12 +130,18 @@ object AssetPacksV3 {
             return Item(title, "Packs", desc, parts.flatMap { it.files }.distinct(), "📦", preview = parts.firstOrNull { it.preview != null }?.preview) { p -> parts.forEach { it.install(p) } }
         }
         return listOfNotNull(
+            pack("Cyberpunk Pack", "Neon city tiles, cyber runner sprites, lasers, glitch shaders and synthwave music",
+                listOf("Sci-Fi Panel", "Glow Bullet", "Shield Bubble", "Hologram", "Dissolve", "Laser", "Pistol Shot", "Action Battle (song)")),
+            pack("Dungeon RPG Pack", "Stone floor, brick wall, slime, hero, chest, sword model, loot sounds and dungeon music",
+                listOf("Stone", "Brick Wall", "Slime", "Hero", "Coin", "Key", "Chest (editable)", "Sword (editable)", "Coin Pickup", "Win Jingle")),
             pack("Top-down Shooter Pack", "Soldier, drones, tank, boss, bullets, muzzle flash, pickups, sci-fi floor, weapons SFX and battle music",
                 listOf("Soldier (top-down)", "Enemy Drone", "Tank (top-down)", "Boss Ship", "Glow Bullet", "Muzzle Flash", "Health Kit", "Shield Bubble", "Sci-Fi Panel", "Pistol Shot", "Explosion", "Shield Up", "Boss Roar", "Action Battle (song)")),
             pack("Zombie Survival Pack", "Zombies, soldier, ground, splats, medkits, ammo, shotgun, groans and spooky music",
                 listOf("Zombie (top-down)", "Zombie Brute", "Soldier (top-down)", "Zombie Ground", "Blood Splat", "Health Kit", "Ammo Box", "Shotgun Pickup", "Crosshair", "Pistol Shot", "Shotgun Blast", "Reload", "Empty Click", "Zombie Groan", "Spooky Night (song)")),
             pack("Racing Pack", "Car model, asphalt/road/curb/desert/grass textures, engine loop, screech, countdown and racing music",
                 listOf("Low-poly Car (editable)", "Asphalt", "Road (lane lines)", "Race Curb", "Desert Sand", "Grass Field", "Car Engine Loop", "Tire Screech", "Countdown Beep", "Race Start", "Nitro Whoosh", "Racing Rush (song)")),
+            pack("Bullet Hell Pack", "Space ship, boss, glowing bullets, starfield background, explosions and fast chiptune track",
+                listOf("Spaceship", "Boss Ship", "Glow Bullet", "Laser Bolt", "Night Sky", "Explosion", "Laser", "Chiptune Loop")),
             pack("MiniCraft Pack", "Block atlas preview, break/place/step sounds, block world music and a tree model",
                 listOf("Voxel Atlas Preview", "Block Break", "Block Place", "Footstep", "Block World (song)", "Tree (editable)")),
             pack("UI Kit Pack", "Panels, buttons, bar frame, icons, banner and the default click sound",

@@ -84,10 +84,30 @@ class PhysicsWorld {
         val bodies = ArrayList<Body>()
         for (go in scene.objects) {
             if (!go.isActiveInHierarchy()) continue
-            val col = go.get<Collider2D>() ?: continue
-            val b = Body(go, go.get(), col)
-            refresh(b)
-            bodies.add(b)
+            val col = go.get<Collider2D>()
+            if (col != null) {
+                val b = Body(go, go.get(), col)
+                refresh(b)
+                bodies.add(b)
+            }
+            val tm = go.get<com.sengine.engine.core.Tilemap>()
+            if (tm != null && tm.generateCollisions) {
+                val w = go.world
+                val grid = tm.grid()
+                val tileW = tm.tileSize
+                val tileH = tm.tileSize
+                for (r in 0 until tm.rows) {
+                    for (c in 0 until tm.cols) {
+                        val tileId = grid[r * tm.cols + c]
+                        if (tileId <= 0) continue
+                        val tx = w.tx + (c - tm.cols / 2f + 0.5f) * tileW * w.scaleX
+                        val ty = w.ty + (r - tm.rows / 2f + 0.5f) * tileH * w.scaleY
+                        val tcol = Collider2D().apply { width = tileW; height = tileH }
+                        val tb = Body(go, null, tcol, tx, ty, tileW * w.scaleX * 0.5f, tileH * w.scaleY * 0.5f, 0f)
+                        bodies.add(tb)
+                    }
+                }
+            }
         }
 
         val contacts = HashSet<Long>()
