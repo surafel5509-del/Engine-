@@ -46,6 +46,7 @@ import com.sengine.engine.core.Scene
 import com.sengine.engine.core.ScriptComponent
 import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.core.TextRenderer
+import com.sengine.engine.core.Tilemap
 import com.sengine.engine.render.EditorState
 import com.sengine.engine.render.SceneRenderer
 import com.sengine.engine.render.Tool
@@ -65,24 +66,55 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private lateinit var inspector: InspectorPanel
     private lateinit var hierarchy: HierarchyAdapter
     private lateinit var controls: GameControlsView
-    private lateinit var toolbar: LinearLayout
+
+    // Godot 4 Studio UI Dock Elements
+    private lateinit var headerBar: LinearLayout
     private lateinit var titleText: TextView
     private lateinit var statsText: TextView
+    private lateinit var mode2dBtn: TextView
+    private lateinit var mode3dBtn: TextView
+    private lateinit var scriptWorkspaceBtn: TextView
+    private lateinit var gameWorkspaceBtn: TextView
+    private lateinit var assetLibWorkspaceBtn: TextView
+
+    private lateinit var leftDock: LinearLayout
+    private lateinit var tabSceneTree: TextView
+    private lateinit var tabFileSystem: TextView
+    private lateinit var sceneTreeContainer: View
+    private lateinit var fileSystemContainer: View
+
+    private lateinit var centerViewportArea: FrameLayout
+    private lateinit var sceneTabsBar: LinearLayout
+    private lateinit var sceneTabName: TextView
+
+    private lateinit var bottomDock: LinearLayout
+    private lateinit var bottomDockContent: FrameLayout
+    private lateinit var tabConsole: TextView
+    private lateinit var tabDebugger: TextView
+    private lateinit var tabAudio: TextView
+    private lateinit var tabAnimation: TextView
+    private lateinit var tabShaders: TextView
     private lateinit var consoleText: TextView
     private lateinit var consoleScroll: ScrollView
+    private lateinit var debuggerText: TextView
+    private lateinit var debuggerScroll: ScrollView
+
+    private lateinit var rightDock: LinearLayout
+    private lateinit var tabInspector: TextView
+    private lateinit var tabNodeSignals: TextView
+    private lateinit var tabHistory: TextView
+    private lateinit var inspectorContainer: View
+    private lateinit var nodeSignalsContainer: LinearLayout
+    private lateinit var historyContainer: ScrollView
+    private lateinit var historyText: TextView
+
     private lateinit var assetsRow: LinearLayout
     private lateinit var assetsScroll: HorizontalScrollView
-    private lateinit var hierarchyPanel: View
-    private lateinit var inspectorPanel: View
-    private lateinit var bottomPanel: LinearLayout
-    private lateinit var bottomContent: FrameLayout
-    private lateinit var tabConsole: TextView
-    private lateinit var tabAssets: TextView
-    private lateinit var assetButtons: LinearLayout
+
     private lateinit var playBtn: android.widget.ImageView
     private lateinit var pauseBtn: android.widget.ImageView
+    private lateinit var stopBtn: android.widget.ImageView
     private lateinit var stepBtn: android.widget.ImageView
-    private lateinit var modeBtn: android.widget.ImageView
     private val toolButtons = HashMap<Tool, android.widget.ImageView>()
 
     private val handler = Handler(Looper.getMainLooper())
@@ -96,10 +128,12 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             if (engine.mode != Engine.Mode.EDIT && count != lastObjectCount) refreshHierarchy()
             val mode = when (engine.mode) { Engine.Mode.EDIT -> "EDIT"; Engine.Mode.PLAY -> "▶ PLAYING"; Engine.Mode.PAUSED -> "⏸ PAUSED" }
             statsText.text = "$mode  •  ${engine.scene.name}  •  ${engine.fps.toInt()} FPS  •  $count objects" +
-                (if (state.mode3D) "  •  3D" else "") + (if (controller.snap) "  •  snap" else "") +
+                (if (state.mode3D) "  •  3D" else "  •  2D") + (if (controller.snap) "  •  snap" else "") +
                 if (state.showProfiler) String.format("\nscripts %.2f ms  •  physics %.2f ms  •  render %.2f ms  •  %d draw calls  •  heap %d MB",
                     engine.scriptMs, engine.physicsMs, engine.renderMs, engine.drawCalls,
                     (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1048576) else ""
+
+            updateDebuggerInfo()
             handler.postDelayed(this, 200)
         }
     }
@@ -145,11 +179,13 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                     v?.vibrate(android.os.VibrationEffect.createOneShot(ms.toLong().coerceIn(1, 2000), android.os.VibrationEffect.DEFAULT_AMPLITUDE))
                 } catch (_: Throwable) {}
             }
-            override fun quit() { runOnUiThread { toast("game.quit() — ignored in the editor") } }
-            override fun openUrl(url: String) { runOnUiThread { try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } catch (_: Exception) {} } }
+            override fun quit() { runOnUiThread { toast("game.quit() — ignored in editor") } }
+            override fun openUrl(url: String) { runOnUiThread { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Exception) {} } }
             override fun toast(text: String) { runOnUiThread { this@EditorActivity.toast(text) } }
         }
-        buildUi()
+
+        buildGodot4StudioUi()
+
         synchronized(engine.lock) {
             scene.updateTransforms()
             val cam = engine.mainCamera()
@@ -159,12 +195,13 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             } else state.view.size = 6f
         }
         val auto3D = synchronized(engine.lock) { engine.mainCamera3D() != null && engine.mainCamera() == null }
-        if (intent.getBooleanExtra("mode3d", false) || auto3D) toggle3D()
+        if (intent.getBooleanExtra("mode3d", false) || auto3D) setMode3D(true) else setMode3D(false)
+
         refreshHierarchy()
         inspector.rebuild()
         refreshAssets()
         updateModeUi()
-        appendConsole(0, "S Engine Full Edition 3.0 — project '${project.name}', scene '${scene.name}'")
+        appendConsole(0, "S Engine Godot 4 Studio — Project '${project.name}', Scene '${scene.name}'")
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -200,69 +237,120 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         }
     }
 
-    // ================================================================== UI construction
+    // ================================================================== Godot 4 Multi-Dock UI Construction
     @SuppressLint("ClickableViewAccessibility")
-    private fun buildUi() {
+    private fun buildGodot4StudioUi() {
         val root = vbox().apply { setBackgroundColor(C.BG) }
 
-        // ---- toolbar
-        toolbar = hbox().apply { setPadding(dp(4), dp(3), dp(4), dp(3)) }
-        val tb = toolbar
-        fun sep() = tb.addView(View(this).apply { setBackgroundColor(0xFF45474D.toInt()) }, lp(dp(1), dp(22)).margins(dp(5), 0, dp(5), 0))
-        fun ibtn(icon: String, desc: String, onClick: (View) -> Unit): android.widget.ImageView {
-            val b = iconButton(icon, desc, C.TEXT, C.PANEL2, 36, onClick)
-            tb.addView(b, lp(dp(36), dp(36)).margins(dp(2), 0, dp(2), 0))
-            return b
-        }
-        ibtn("back", "Back to projects") { onBackPressedDispatcher.onBackPressed() }
-        titleText = label("", 13f, C.TEXT, true).apply { setPadding(dp(6), 0, dp(6), 0); maxWidth = dp(160); isSingleLine = true }
-        tb.addView(titleText)
-        sep()
-        ibtn("layers", "Hierarchy") { toggle(hierarchyPanel) }
-        for ((tool, icon) in listOf(Tool.HAND to "cursor", Tool.MOVE to "move", Tool.ROTATE to "rotate", Tool.SCALE to "scale")) {
-            toolButtons[tool] = ibtn(icon, tool.name.lowercase().replaceFirstChar { it.uppercase() } + " tool") { setTool(tool) }
-        }
-        modeBtn = ibtn("cube", "Switch 2D / 3D view") { toggle3D() }
-        ibtn("chart", "Profiler") { state.showProfiler = !state.showProfiler }
-        sep()
-        playBtn = ibtn("play", "Play / Stop") { if (engine.mode == Engine.Mode.EDIT) startPlay() else engine.stop() }
-        pauseBtn = ibtn("pause", "Pause") { if (engine.mode == Engine.Mode.PAUSED) engine.play() else engine.pause() }
-        stepBtn = ibtn("step", "Step one frame") { engine.stepFrame() }
-        sep()
-        ibtn("undo", "Undo") { undo() }
-        ibtn("redo", "Redo") { redo() }
-        sep()
-        ibtn("plus", "Add object") { addObjectMenu(it) }
-        ibtn("save", "Save scene") { saveScene() }
-        ibtn("store", "Asset Store") { startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name)) }
-        ibtn("gamepad", "Controls Editor") { saveScene(silent = true); startActivity(Intent(this, ControlsEditorActivity::class.java).putExtra("project", project.name)) }
-        ibtn("doctor", "Game Doctor") { saveScene(silent = true); openHelp("doctor") }
-        ibtn("rocket", "Build APK") { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
-        ibtn("help", "Help Center") { openHelp(null) }
-        ibtn("more", "More") { mainMenu(it) }
-        ibtn("sliders", "Inspector") { toggle(inspectorPanel) }
-        val tbScroll = HorizontalScrollView(this).apply { addView(tb); isHorizontalScrollBarEnabled = false; setBackgroundColor(C.HEADER) }
-        root.addView(tbScroll, lp(MATCH, WRAP))
+        // 1. TOP HEADER BAR (Godot 4 style)
+        headerBar = hbox().apply { setPadding(dp(6), dp(4), dp(6), dp(4)); setBackgroundColor(C.HEADER) }
 
-        // ---- middle
+        // Left Header: Back button + Title
+        val backBtn = iconButton("back", "Back to projects", C.TEXT, C.PANEL2, 34) { onBackPressedDispatcher.onBackPressed() }
+        headerBar.addView(backBtn, lp(dp(34), dp(34)).margins(0, 0, dp(4), 0))
+        titleText = label("", 12f, C.TEXT, true).apply { setPadding(dp(4), 0, dp(8), 0); maxWidth = dp(140); isSingleLine = true }
+        headerBar.addView(titleText)
+
+        // Center Header: Workspace Mode Switcher (2D | 3D | Script | Game | AssetLib)
+        val modeSwitcher = hbox().apply {
+            background = round(C.PANEL2, dp(6).toFloat())
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
+        mode2dBtn = button("2D", C.PANEL2) { setMode3D(false) }.apply { textSize = 11f; setPadding(dp(8), 0, dp(8), 0) }
+        mode3dBtn = button("3D", C.PANEL2) { setMode3D(true) }.apply { textSize = 11f; setPadding(dp(8), 0, dp(8), 0) }
+        scriptWorkspaceBtn = button("Script", C.PANEL2) { openScriptWorkspace() }.apply { textSize = 11f; setPadding(dp(8), 0, dp(8), 0) }
+        gameWorkspaceBtn = button("Game", C.PANEL2) { saveScene(silent = true); startActivity(Intent(this, PlayerActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 11f; setPadding(dp(8), 0, dp(8), 0) }
+        assetLibWorkspaceBtn = button("AssetLib", C.PANEL2) { startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 11f; setPadding(dp(8), 0, dp(8), 0) }
+
+        modeSwitcher.addView(mode2dBtn)
+        modeSwitcher.addView(mode3dBtn)
+        modeSwitcher.addView(scriptWorkspaceBtn)
+        modeSwitcher.addView(gameWorkspaceBtn)
+        modeSwitcher.addView(assetLibWorkspaceBtn)
+        headerBar.addView(modeSwitcher, lp(WRAP, dp(34)).margins(dp(8), 0, dp(8), 0))
+
+        headerBar.addView(View(this), lp(0, 1, 1f)) // spacer
+
+        // Right Header: Playback controls + Quick Tools
+        playBtn = iconButton("play", "Play Scene", C.TEXT, C.PANEL2, 34) { if (engine.mode == Engine.Mode.EDIT) startPlay() else engine.stop() }
+        pauseBtn = iconButton("pause", "Pause", C.TEXT, C.PANEL2, 34) { if (engine.mode == Engine.Mode.PAUSED) engine.play() else engine.pause() }
+        stopBtn = iconButton("stop", "Stop", C.TEXT, C.PANEL2, 34) { engine.stop() }
+        stepBtn = iconButton("step", "Step Frame", C.TEXT, C.PANEL2, 34) { engine.stepFrame() }
+
+        val saveBtn = iconButton("save", "Save Scene", C.TEXT, C.PANEL2, 34) { saveScene() }
+        val apkBtn = iconButton("rocket", "Build APK", C.ACCENT, C.PANEL2, 34) { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
+        val aiBtn = iconButton("doctor", "AI Assistant", C.TEXT, C.PANEL2, 34) { startActivity(Intent(this, AgentActivity::class.java)) }
+        val moreBtn = iconButton("more", "Main Menu", C.TEXT, C.PANEL2, 34) { mainMenu(it) }
+
+        headerBar.addView(playBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+        headerBar.addView(pauseBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+        headerBar.addView(stopBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+        headerBar.addView(stepBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+        headerBar.addView(saveBtn, lp(dp(34), dp(34)).margins(dp(4), 0, dp(2), 0))
+        headerBar.addView(apkBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+        headerBar.addView(aiBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+        headerBar.addView(moreBtn, lp(dp(34), dp(34)).margins(dp(2), 0, dp(2), 0))
+
+        val headerScroll = HorizontalScrollView(this).apply { addView(headerBar); isHorizontalScrollBarEnabled = false }
+        root.addView(headerScroll, lp(MATCH, WRAP))
+
+        // 2. MIDDLE AREA (Multi-Dock Layout: Left Dock | Center Viewport | Right Dock)
         val middle = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
 
-        // hierarchy
-        val hp = vbox().apply { setBackgroundColor(C.PANEL) }
-        val hh = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(8), dp(2), dp(2), dp(2)) }
-        hh.addView(label("HIERARCHY", 11f, C.DIM, true), lp(0, WRAP, 1f))
-        hh.addView(button("＋", C.HEADER) { addObjectMenu(it) }.apply { textSize = 13f })
-        hp.addView(hh, lp(MATCH, WRAP))
+        // --- LEFT DOCK (Scene Tree & FileSystem Docks) ---
+        leftDock = vbox().apply { setBackgroundColor(C.PANEL) }
+        val leftDockHeader = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(4), dp(2), dp(4), dp(2)) }
+        tabSceneTree = button("Scene", C.HEADER) { showLeftDockTab(0) }.apply { textSize = 11f }
+        tabFileSystem = button("FileSystem", C.HEADER) { showLeftDockTab(1) }.apply { textSize = 11f }
+        leftDockHeader.addView(tabSceneTree)
+        leftDockHeader.addView(tabFileSystem)
+        leftDockHeader.addView(View(this), lp(0, 1, 1f))
+        leftDockHeader.addView(button("＋", C.HEADER) { addObjectMenu(it) }.apply { textSize = 12f })
+        leftDock.addView(leftDockHeader, lp(MATCH, WRAP))
+
+        // Left Dock Content Stack
+        val leftDockContent = FrameLayout(this)
+
+        // Scene Tree Panel
+        sceneTreeContainer = vbox().apply { setBackgroundColor(C.PANEL) }
         hierarchy = HierarchyAdapter(this,
             onClick = { select(it.id) },
             onLongClick = { go, v -> objectMenu(go, v) },
             onToggleActive = { go -> history.record(state.selectedId); synchronized(engine.lock) { go.active = !go.active }; refreshHierarchy(); inspector.refreshValues() })
         val rv = RecyclerView(this).apply { layoutManager = LinearLayoutManager(this@EditorActivity); adapter = hierarchy }
-        hp.addView(rv, lp(MATCH, 0, 1f))
-        hierarchyPanel = hp
-        middle.addView(hp, lp(dp(180), MATCH))
+        (sceneTreeContainer as LinearLayout).addView(rv, lp(MATCH, MATCH))
+        leftDockContent.addView(sceneTreeContainer)
 
-        // viewport
+        // FileSystem Panel
+        fileSystemContainer = vbox().apply { setBackgroundColor(C.PANEL); visibility = View.GONE }
+        val fsToolbar = hbox().apply { setPadding(dp(4), dp(4), dp(4), dp(4)) }
+        fsToolbar.addView(button("+ Script") { newScriptDialog { refreshAssets(); openScript(it) } }.apply { textSize = 10f }, lp(0, WRAP, 1f))
+        fsToolbar.addView(button("+ Sprite") { saveScene(silent = true); startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 10f }, lp(0, WRAP, 1f))
+        (fileSystemContainer as LinearLayout).addView(fsToolbar, lp(MATCH, WRAP))
+
+        assetsRow = hbox().apply { setPadding(dp(6), dp(6), dp(6), dp(6)) }
+        assetsScroll = HorizontalScrollView(this).apply { addView(assetsRow) }
+        (fileSystemContainer as LinearLayout).addView(assetsScroll, lp(MATCH, MATCH))
+        leftDockContent.addView(fileSystemContainer)
+
+        leftDock.addView(leftDockContent, lp(MATCH, 0, 1f))
+        middle.addView(leftDock, lp(dp(200), MATCH))
+
+        // --- CENTER VIEWPORT AREA ---
+        centerViewportArea = FrameLayout(this)
+        val centerContainer = vbox()
+
+        // Center Scene Tabs
+        sceneTabsBar = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(6), dp(2), dp(6), dp(2)) }
+        sceneTabName = label("${project.startScene}.scene ✕", 11f, C.ACCENT, true)
+        sceneTabsBar.addView(sceneTabName)
+        sceneTabsBar.addView(View(this), lp(0, 1, 1f))
+        sceneTabsBar.addView(button("Snap", C.HEADER) { controller.snap = !controller.snap }.apply { textSize = 10f })
+        sceneTabsBar.addView(button("Grid", C.HEADER) { state.showGrid = !state.showGrid }.apply { textSize = 10f })
+        sceneTabsBar.addView(button("Prof", C.HEADER) { state.showProfiler = !state.showProfiler }.apply { textSize = 10f })
+        centerContainer.addView(sceneTabsBar, lp(MATCH, WRAP))
+
+        // Viewport Stack
         val vp = FrameLayout(this)
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(2)
@@ -274,81 +362,171 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         vp.addView(glView)
         controls = GameControlsView(this) { engine.input }
         vp.addView(controls)
+
         statsText = label("", 11f, 0xCCFFFFFF.toInt()).apply {
             setPadding(dp(8), dp(3), dp(8), dp(3)); background = round(0x88000000.toInt(), dp(4).toFloat())
         }
         vp.addView(statsText, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(dp(6), dp(6), 0, 0) })
-        val frameBtn = button("⌖", 0x88000000.toInt()) { controller.frame(synchronized(engine.lock) { engine.scene.findById(state.selectedId) }) }
-        vp.addView(frameBtn, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(6), dp(6), 0) })
-        middle.addView(vp, lp(0, MATCH, 1f))
 
-        // inspector
-        val ip = vbox().apply { setBackgroundColor(C.PANEL) }
-        val ih = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(8), dp(6), dp(8), dp(6)) }
-        ih.addView(label("INSPECTOR", 11f, C.DIM, true))
-        ip.addView(ih, lp(MATCH, WRAP))
-        val inspContent = vbox()
-        ip.addView(ScrollView(this).apply { addView(inspContent); isFillViewport = true }, lp(MATCH, 0, 1f))
-        inspector = InspectorPanel(this, this, inspContent)
-        inspectorPanel = ip
-        middle.addView(ip, lp(dp(270), MATCH))
+        // Gizmo Tool Overlay Buttons
+        val gizmoBar = vbox().apply {
+            background = round(0xAA1C1D21.toInt(), dp(6).toFloat())
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+        }
+        for ((tool, icon) in listOf(Tool.HAND to "cursor", Tool.MOVE to "move", Tool.ROTATE to "rotate", Tool.SCALE to "scale")) {
+            val b = iconButton(icon, tool.name, C.TEXT, C.PANEL2, 32) { setTool(tool) }
+            toolButtons[tool] = b
+            gizmoBar.addView(b, lp(dp(32), dp(32)).margins(0, dp(1), 0, dp(1)))
+        }
+        val frameBtn = iconButton("target", "Frame Target", C.TEXT, C.PANEL2, 32) { controller.frame(synchronized(engine.lock) { engine.scene.findById(state.selectedId) }) }
+        gizmoBar.addView(frameBtn, lp(dp(32), dp(32)).margins(0, dp(1), 0, dp(1)))
+        vp.addView(gizmoBar, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(6), dp(6), 0) })
+
+        centerContainer.addView(vp, lp(MATCH, 0, 1f))
+
+        // --- COLLAPSIBLE BOTTOM DOCK (Console / Debugger / Audio / Animation / Shader / Tilemap) ---
+        bottomDock = vbox().apply { setBackgroundColor(C.PANEL) }
+        val bottomTabs = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(4), dp(2), dp(4), dp(2)) }
+        tabConsole = button("Output / Console", C.HEADER) { showBottomDockTab(0) }.apply { textSize = 11f }
+        tabDebugger = button("Debugger", C.HEADER) { showBottomDockTab(1) }.apply { textSize = 11f }
+        tabAudio = button("Audio", C.HEADER) { showBottomDockTab(2) }.apply { textSize = 11f }
+        tabAnimation = button("Animation", C.HEADER) { openAnimationEditor(null) }.apply { textSize = 11f }
+        tabShaders = button("Tilemap", C.HEADER) { startActivity(Intent(this@EditorActivity, TilemapEditorActivity::class.java).putExtra("project", project.name).putExtra("scene", engine.scene.name)) }.apply { textSize = 11f }
+
+        bottomTabs.addView(tabConsole)
+        bottomTabs.addView(tabDebugger)
+        bottomTabs.addView(tabAudio)
+        bottomTabs.addView(tabAnimation)
+        bottomTabs.addView(tabShaders)
+        bottomTabs.addView(View(this), lp(0, 1, 1f))
+        bottomTabs.addView(button("Clear", C.HEADER) { consoleText.text = "" }.apply { textSize = 11f })
+        bottomTabs.addView(button("▾", C.HEADER) { toggle(bottomDockContent) }.apply { textSize = 11f })
+        bottomDock.addView(bottomTabs, lp(MATCH, WRAP))
+
+        bottomDockContent = FrameLayout(this)
+
+        // Console Scroll View
+        consoleText = label("", 11f, 0xFFCFD2D6.toInt()).apply { typeface = Typeface.MONOSPACE; setPadding(dp(8), dp(4), dp(8), dp(4)); setTextIsSelectable(true) }
+        consoleScroll = ScrollView(this).apply { addView(consoleText) }
+        bottomDockContent.addView(consoleScroll)
+
+        // Debugger Scroll View
+        debuggerText = label("Debugger initialized.", 11f, 0xFF4FC3F7.toInt()).apply { typeface = Typeface.MONOSPACE; setPadding(dp(8), dp(4), dp(8), dp(4)); setTextIsSelectable(true) }
+        debuggerScroll = ScrollView(this).apply { addView(debuggerText); visibility = View.GONE }
+        bottomDockContent.addView(debuggerScroll)
+
+        bottomDock.addView(bottomDockContent, lp(MATCH, dp(110)))
+        centerContainer.addView(bottomDock, lp(MATCH, WRAP))
+
+        centerViewportArea.addView(centerContainer)
+        middle.addView(centerViewportArea, lp(0, MATCH, 1f))
+
+        // --- RIGHT DOCK (Inspector / Node Signals / History) ---
+        rightDock = vbox().apply { setBackgroundColor(C.PANEL) }
+        val rightDockHeader = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(4), dp(2), dp(4), dp(2)) }
+        tabInspector = button("Inspector", C.HEADER) { showRightDockTab(0) }.apply { textSize = 11f }
+        tabNodeSignals = button("Node", C.HEADER) { showRightDockTab(1) }.apply { textSize = 11f }
+        tabHistory = button("History", C.HEADER) { showRightDockTab(2) }.apply { textSize = 11f }
+        rightDockHeader.addView(tabInspector)
+        rightDockHeader.addView(tabNodeSignals)
+        rightDockHeader.addView(tabHistory)
+        rightDock.addView(rightDockHeader, lp(MATCH, WRAP))
+
+        val rightDockContent = FrameLayout(this)
+
+        // Inspector Content
+        inspectorContainer = vbox()
+        val inspScrollView = ScrollView(this).apply { addView(inspectorContainer); isFillViewport = true }
+        inspector = InspectorPanel(this, this, inspectorContainer as LinearLayout)
+        rightDockContent.addView(inspScrollView)
+
+        // Node Signals / Groups Content
+        nodeSignalsContainer = vbox().apply { setPadding(dp(8), dp(8), dp(8), dp(8)); visibility = View.GONE }
+        nodeSignalsContainer.addView(label("NODE SIGNALS & GROUPS", 11f, C.DIM, true))
+        nodeSignalsContainer.addView(label("\nGroups:\n• Player\n• Enemy\n• Collectibles\n\nSignals:\n• body_entered()\n• area_exited()\n• animation_finished()", 12f, C.TEXT))
+        rightDockContent.addView(nodeSignalsContainer)
+
+        // History Content
+        historyText = label("Undo / Redo Stack:\n[1] Initial Scene State", 11f, C.TEXT).apply { setPadding(dp(8), dp(8), dp(8), dp(8)) }
+        historyContainer = ScrollView(this).apply { addView(historyText); visibility = View.GONE }
+        rightDockContent.addView(historyContainer)
+
+        rightDock.addView(rightDockContent, lp(MATCH, 0, 1f))
+        middle.addView(rightDock, lp(dp(250), MATCH))
 
         root.addView(middle, lp(MATCH, 0, 1f))
 
-        // ---- bottom panel
-        bottomPanel = vbox().apply { setBackgroundColor(C.PANEL) }
-        val tabs = hbox().apply { setBackgroundColor(C.HEADER); setPadding(dp(4), dp(2), dp(4), dp(2)) }
-        tabConsole = button("Console", C.HEADER) { showTab(0) }.apply { textSize = 12f }
-        tabAssets = button("Assets", C.HEADER) { showTab(1) }.apply { textSize = 12f }
-        tabs.addView(tabConsole); tabs.addView(tabAssets)
-        tabs.addView(View(this), lp(0, 1, 1f))
-        assetButtons = hbox()
-        assetButtons.addView(button("+ Script") { newScriptDialog { refreshAssets(); openScript(it) } }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Store") { startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ Blueprint") { newAssetDialog("New Blueprint", "NewBlueprint", "bp", { com.sengine.engine.blueprint.Blueprint.defaultGraph().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ Sprite") { saveScene(silent = true); startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ Texture") { saveScene(silent = true); startActivity(Intent(this, TextureStudioActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ Shader") { newAssetDialog("New Shader", "NewShader", "glsl", { Templates.NEW_SHADER }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ Animation") { newAssetDialog("New Animation", "NewAnimation", "anim", { com.sengine.engine.anim.AnimationClip().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ Song") { newAssetDialog("New Song", "Theme", "song", { MusicEditorActivity.newSongJson(it.substringBeforeLast('.')) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("+ 3D Model") { newAssetDialog("New 3D Model", "MyModel", "smodel", { ModelEditorActivity.newModelJson() }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Model") { importKind = AssetKind.MODEL; importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Image") { importKind = AssetKind.TEXTURE; importLauncher.launch(arrayOf("image/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        assetButtons.addView(button("Import Sound") { importKind = AssetKind.SOUND; importLauncher.launch(arrayOf("audio/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
-        tabs.addView(assetButtons)
-        tabs.addView(button("Clear", C.HEADER) { consoleText.text = "" }.apply { textSize = 12f })
-        tabs.addView(button("▾", C.HEADER) { toggle(bottomContent) }.apply { textSize = 12f })
-        bottomPanel.addView(tabs, lp(MATCH, WRAP))
-
-        bottomContent = FrameLayout(this)
-        consoleText = label("", 11f, 0xFFCFD2D6.toInt()).apply { typeface = Typeface.MONOSPACE; setPadding(dp(8), dp(4), dp(8), dp(4)); setTextIsSelectable(true) }
-        consoleScroll = ScrollView(this).apply { addView(consoleText) }
-        bottomContent.addView(consoleScroll)
-        assetsRow = hbox().apply { setPadding(dp(6), dp(6), dp(6), dp(6)) }
-        assetsScroll = HorizontalScrollView(this).apply { addView(assetsRow) }
-        bottomContent.addView(assetsScroll)
-        bottomPanel.addView(bottomContent, lp(MATCH, dp(112)))
-        root.addView(bottomPanel, lp(MATCH, WRAP))
-
         setContentView(root)
         setTool(Tool.MOVE)
-        showTab(0)
+        showLeftDockTab(0)
+        showBottomDockTab(0)
+        showRightDockTab(0)
         updateTitle()
+    }
+
+    private fun setMode3D(enabled: Boolean) {
+        state.mode3D = enabled
+        mode2dBtn.setBackgroundColor(if (!enabled) C.ACCENT else C.PANEL2)
+        mode3dBtn.setBackgroundColor(if (enabled) C.ACCENT else C.PANEL2)
+        if (enabled) synchronized(engine.lock) { controller.frame(engine.scene.findById(state.selectedId)) }
+    }
+
+    private fun showLeftDockTab(tab: Int) {
+        sceneTreeContainer.visibility = if (tab == 0) View.VISIBLE else View.GONE
+        fileSystemContainer.visibility = if (tab == 1) View.VISIBLE else View.GONE
+        tabSceneTree.setTextColor(if (tab == 0) C.ACCENT else C.DIM)
+        tabFileSystem.setTextColor(if (tab == 1) C.ACCENT else C.DIM)
+    }
+
+    private fun showBottomDockTab(tab: Int) {
+        consoleScroll.visibility = if (tab == 0) View.VISIBLE else View.GONE
+        debuggerScroll.visibility = if (tab == 1) View.VISIBLE else View.GONE
+        tabConsole.setTextColor(if (tab == 0) C.ACCENT else C.DIM)
+        tabDebugger.setTextColor(if (tab == 1) C.ACCENT else C.DIM)
+        tabAudio.setTextColor(if (tab == 2) C.ACCENT else C.DIM)
+        bottomDockContent.visibility = View.VISIBLE
+        if (tab == 2) startActivity(Intent(this, MusicEditorActivity::class.java).putExtra("project", project.name))
+    }
+
+    private fun showRightDockTab(tab: Int) {
+        inspectorContainer.parent?.let { (it as View).visibility = if (tab == 0) View.VISIBLE else View.GONE }
+        nodeSignalsContainer.visibility = if (tab == 1) View.VISIBLE else View.GONE
+        historyContainer.visibility = if (tab == 2) View.VISIBLE else View.GONE
+        tabInspector.setTextColor(if (tab == 0) C.ACCENT else C.DIM)
+        tabNodeSignals.setTextColor(if (tab == 1) C.ACCENT else C.DIM)
+        tabHistory.setTextColor(if (tab == 2) C.ACCENT else C.DIM)
+    }
+
+    private fun updateDebuggerInfo() {
+        if (::debuggerText.isInitialized) {
+            val sb = StringBuilder()
+            sb.append("--- GODOT 4 DEBUGGER ---\n")
+            sb.append("Mode: ").append(engine.mode).append("\n")
+            sb.append("FPS: ").append(engine.fps.toInt()).append("\n")
+            sb.append("Scene: ").append(engine.scene.name).append(" (").append(engine.scene.objects.size).append(" nodes)\n")
+            sb.append("Draw Calls: ").append(engine.drawCalls).append("\n")
+            val sel = engine.scene.findById(state.selectedId)
+            if (sel != null) {
+                sb.append("\nSelected Node: ").append(sel.name).append(" [ID ").append(sel.id).append("]\n")
+                sb.append("Position: (").append(sel.x).append(", ").append(sel.y).append(", ").append(sel.z).append(")\n")
+                sb.append("Layer: ").append(sel.layer).append(" | Group: ").append(sel.group).append("\n")
+                sb.append("Components: ").append(sel.components.joinToString { it.javaClass.simpleName }).append("\n")
+            } else {
+                sb.append("\nNo node selected.\n")
+            }
+            debuggerText.text = sb.toString()
+        }
+    }
+
+    private fun openScriptWorkspace() {
+        startActivity(Intent(this, ScriptEditorActivity::class.java).putExtra("project", project.name))
     }
 
     private fun toggle(v: View) { v.visibility = if (v.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
 
-    private fun showTab(i: Int) {
-        consoleScroll.visibility = if (i == 0) View.VISIBLE else View.GONE
-        assetsScroll.visibility = if (i == 1) View.VISIBLE else View.GONE
-        assetButtons.visibility = if (i == 1) View.VISIBLE else View.GONE
-        tabConsole.setTextColor(if (i == 0) C.ACCENT else C.DIM)
-        tabAssets.setTextColor(if (i == 1) C.ACCENT else C.DIM)
-        bottomContent.visibility = View.VISIBLE
-    }
-
     private fun updateTitle() {
         titleText.text = "${project.name} / ${engine.scene.name}"
+        if (::sceneTabName.isInitialized) sceneTabName.text = "${engine.scene.name}.scene ✕"
     }
 
     private fun setTool(t: Tool) {
@@ -364,7 +542,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         playBtn.setBg(if (m == Engine.Mode.EDIT) C.PANEL2 else C.GREEN)
         pauseBtn.setBg(if (m == Engine.Mode.PAUSED) C.YELLOW else C.PANEL2)
         stepBtn.alpha = if (m == Engine.Mode.PAUSED) 1f else 0.4f
-        toolbar.setBackgroundColor(if (m == Engine.Mode.EDIT) C.HEADER else 0xFF1D2E45.toInt())
+        headerBar.setBackgroundColor(if (m == Engine.Mode.EDIT) C.HEADER else 0xFF1D2E45.toInt())
         controls.visibility = if (m == Engine.Mode.EDIT) View.GONE else View.VISIBLE
         if (m == Engine.Mode.PLAY && lastUiMode == Engine.Mode.EDIT) controls.projectLayout = project.loadControls()
         if (m != Engine.Mode.PAUSED) controls.reset()
@@ -404,7 +582,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             AssetKind.ANIMATION -> openAnimationEditor(name)
             AssetKind.SONG -> { saveScene(silent = true); startActivity(Intent(this, MusicEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name)) }
             AssetKind.MODEL -> if (name.endsWith(".smodel")) { saveScene(silent = true); startActivity(Intent(this, ModelEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name)) }
-                else toast("OBJ models are read-only — create a .smodel to edit in the Model Editor")
+                else toast("OBJ models are read-only — create a .smodel to edit")
             else -> if (name.endsWith(".bp")) startActivity(Intent(this, BlueprintEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name))
                 else startActivity(Intent(this, ScriptEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name))
         }
@@ -445,11 +623,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 refreshAssets()
                 onCreated(n)
             }
-            .setNeutralButton("C++ Script") { _, _ ->
-                var n = f.text.toString().trim().replace(Regex("[^A-Za-z0-9_]"), "").ifBlank { "NewBehaviour" }
-                if (n.first().isDigit()) n = "S$n"
-                n = project.uniqueAssetName("$n.cpp")
-                project.writeAsset(n, Templates.newCppScript(n.removeSuffix(".cpp")))
+            .setNeutralButton("GDScript") { _, _ ->
+                var n = f.text.toString().trim().replace(Regex("[^A-Za-z0-9_\\-]"), "").ifBlank { "NewScript" }
+                if (!n.endsWith(".gd")) n += ".gd"
+                n = project.uniqueAssetName(n)
+                project.writeAsset(n, "func update(dt):\n    pass\n")
                 refreshAssets()
                 onCreated(n)
             }
@@ -493,22 +671,16 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     }
 
     // ================================================================== object creation
-    private fun toggle3D() {
-        state.mode3D = !state.mode3D
-        modeBtn.setIconTint(if (state.mode3D) "cube" else "image", C.TEXT, 20)
-        if (state.mode3D) synchronized(engine.lock) { controller.frame(engine.scene.findById(state.selectedId)) }
-    }
-
     private fun addObjectMenu(anchor: View) {
         if (engine.mode != Engine.Mode.EDIT) { toast("Stop play mode to add objects"); return }
         val pm = PopupMenu(this, anchor)
         pm.menu.add("Empty"); pm.menu.add("Empty Child")
         val m2 = pm.menu.addSubMenu("2D Object")
-        listOf("Square", "Circle", "Triangle", "Text", "UI Text", "Camera", "Particle System",
+        listOf("Square", "Circle", "Triangle", "Tilemap", "Text", "UI Text", "Camera", "Particle System",
             "Physics Box", "Physics Ball", "Static Platform", "Trigger Zone", "Animated Sprite").forEach { m2.add(it) }
         val m3 = pm.menu.addSubMenu("3D Object")
         listOf("Cube", "Sphere", "Plane", "Cylinder", "Cone", "Torus", "Capsule", "Pyramid",
-            "Physics Cube 3D", "Physics Sphere 3D", "Ground 3D", "Landscape (C++ terrain)", "3D Camera", "Directional Light", "Point Light").forEach { m3.add(it) }
+            "Physics Cube 3D", "Physics Sphere 3D", "Ground 3D", "3D Camera", "Directional Light", "Point Light").forEach { m3.add(it) }
         val p2 = pm.menu.addSubMenu("Prefabs 2D (water, fire, weather…)")
         com.sengine.project.Prefabs.PREFABS_2D.forEach { p2.add(it) }
         val p3 = pm.menu.addSubMenu("Prefabs 3D (lake, campfire, lamps…)")
@@ -550,11 +722,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 in meshKinds -> g.add(MeshRenderer().also { it.mesh = meshKinds.indexOf(kind) }).also { if (kind == "Plane") { g.scaleX = 10f; g.scaleZ = 10f } }
                 "Physics Cube 3D" -> { g.y += 3f; g.add(MeshRenderer().also { it.color = 0xFFFFB74D.toInt() }); g.add(Collider3D()); g.add(Rigidbody3D()) }
                 "Physics Sphere 3D" -> { g.y += 3f; g.add(MeshRenderer().also { it.mesh = 1; it.color = 0xFF4FC3F7.toInt() }); g.add(Collider3D().also { it.shape = 1 }); g.add(Rigidbody3D().also { it.bounciness = 0.5f }) }
-                "Landscape (C++ terrain)" -> { g.name = scene.uniqueName("Landscape"); g.x = 0f; g.y = 0f; g.z = 0f; g.add(com.sengine.engine.core.Landscape()) }
                 "Ground 3D" -> { g.scaleX = 20f; g.scaleY = 0.5f; g.scaleZ = 20f; g.y = -0.25f; g.add(MeshRenderer().also { it.color = 0xFF6D8B5A.toInt() }); g.add(Collider3D()) }
                 "3D Camera" -> { g.y = 3f; g.z = 10f; g.rotX = -12f; g.add(Camera3D()) }
                 "Directional Light" -> { g.rotX = -50f; g.rotY = 30f; g.add(Light()) }
                 "Point Light" -> { g.y += 2f; g.add(Light().also { it.kind = 1; it.color = 0xFFFFC870.toInt() }) }
+                "Tilemap" -> { g.add(Tilemap()) }
                 "UI Text" -> { g.x = 0f; g.y = 4f; g.add(TextRenderer().also { it.screenSpace = true; it.text = "Score: 0" }) }
                 "Animated Sprite" -> { g.add(SpriteRenderer()); g.add(Animator()) }
                 "Empty", "Empty Child" -> g.name = scene.uniqueName("GameObject")
@@ -636,12 +808,8 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private fun mainMenu(anchor: View) {
         val pm = PopupMenu(this, anchor)
         val entries = listOf(
-            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
-            (if (state.showProfiler) "Hide" else "Show") + " Profiler",
-            (if (state.showGrid) "Hide" else "Show") + " Grid",
-            (if (state.showColliders) "Hide" else "Show") + " Colliders",
-            "Snap: " + if (controller.snap) "ON" else "OFF",
-            "Toggle Bottom Panel", "Script API Reference", "About S Engine"
+            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Tilemap Editor", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Export Project (.zip)",
+            "Toggle Profiler", "Toggle Grid", "Toggle Colliders", "Snap: " + if (controller.snap) "ON" else "OFF", "Script API Reference", "About S Engine Studio"
         )
         entries.forEach { pm.menu.add(it) }
         pm.setOnMenuItemClickListener { item ->
@@ -652,6 +820,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t.startsWith("Build & Run") -> { saveScene(silent = true); startActivity(Intent(this, PlayerActivity::class.java).putExtra("project", project.name)) }
                 t == "Build APK…" -> { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
                 t == "Asset Store" -> startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name))
+                t == "Tilemap Editor" -> startActivity(Intent(this, TilemapEditorActivity::class.java).putExtra("project", project.name).putExtra("scene", engine.scene.name))
                 t == "Animation Editor" -> openAnimationEditor(null)
                 t == "AI Agent" -> { saveScene(silent = true); startActivity(Intent(this, AgentActivity::class.java)) }
                 t == "Sprite Studio" -> { saveScene(silent = true); startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name)) }
@@ -665,22 +834,18 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Controls Editor" -> { saveScene(silent = true); startActivity(Intent(this, ControlsEditorActivity::class.java).putExtra("project", project.name)) }
                 t == "Game Doctor" -> { saveScene(silent = true); openHelp("doctor") }
                 t == "Help Center" -> openHelp(null)
-                t == "Script Recipes" -> openHelp("recipes")
-                t.endsWith("Profiler") -> state.showProfiler = !state.showProfiler
+                t.contains("Profiler") -> state.showProfiler = !state.showProfiler
                 t.startsWith("Export") -> { saveScene(silent = true); exportLauncher.launch("${project.name}.zip") }
-                t.endsWith("Grid") -> state.showGrid = !state.showGrid
-                t.endsWith("Colliders") -> state.showColliders = !state.showColliders
+                t.contains("Grid") -> state.showGrid = !state.showGrid
+                t.contains("Colliders") -> state.showColliders = !state.showColliders
                 t.startsWith("Snap") -> controller.snap = !controller.snap
-                t == "Toggle Bottom Panel" -> toggle(bottomPanel)
                 t == "Script API Reference" -> showText("Script API", ScriptEditorActivity.API_DOC)
-                t.startsWith("About") -> showText("About S Engine",
-                    "S Engine 3rd Edition\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
-                        "• 3D: meshes, OBJ models, Blinn-Phong lights, fog, sky, 3D physics, orbit editor\n" +
-                        "• Sprite animation editor, asset store, visual blueprints, GLSL shaders & post FX\n" +
-                        "• Build real installable APKs of your game\n" +
-                        "• Scene editor with hierarchy, inspector, gizmos, undo/redo\n• OpenGL ES 2.0 renderer: shapes, sprites, text, particles\n" +
-                        "• Physics: rigidbodies, box/circle colliders, triggers\n• JavaScript behaviours (Mozilla Rhino)\n" +
-                        "• Multiple scenes, audio, touch joystick, fullscreen player\n• Project import/export as .zip")
+                t.startsWith("About") -> showText("About S Engine Godot Studio",
+                    "S Engine Godot 4 Studio Edition\n\nA 2D & 3D game studio with Godot multi-dock workspace.\n\n" +
+                        "• Tilemaps, Layers & Groups, GDScript / Lua / JS scripting\n" +
+                        "• Built-in multi-provider AI game dev agent\n" +
+                        "• 3D models, shaders, particle systems, audio editor\n" +
+                        "• Directly builds installable Android APKs")
             }
             true
         }
@@ -714,7 +879,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             .setItems(actions) { _, i ->
                 when (i) {
                     0 -> openScene(name)
-                    1 -> { project.startScene = name; project.saveMeta(); toast("$name is now the start scene") }
+                    1 -> { project.startScene = name; project.saveMeta(); toast("$name is start scene") }
                     2 -> {
                         var n = "$name Copy"; var k = 2
                         while (project.sceneExists(n)) n = "$name Copy ${k++}"
@@ -722,7 +887,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                         toast("Created $n")
                     }
                     3 -> {
-                        if (name == engine.scene.name) toast("Can't delete the open scene")
+                        if (name == engine.scene.name) toast("Can't delete open scene")
                         else { project.deleteScene(name); toast("Deleted $name") }
                     }
                 }
@@ -737,7 +902,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             .setView(LinearLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(f, lp(MATCH, WRAP)) })
             .setPositiveButton("Create") { _, _ ->
                 val n = ProjectManager.sanitize(f.text.toString())
-                if (n.isBlank() || project.sceneExists(n)) { toast("Invalid or existing name"); return@setPositiveButton }
+                if (n.isBlank() || project.sceneExists(n)) { toast("Invalid name"); return@setPositiveButton }
                 val s = Scene(n)
                 s.create("Main Camera").add(Camera2D())
                 project.saveScene(s)
@@ -761,7 +926,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         if (!::assetsRow.isInitialized) return
         assetsRow.removeAllViews()
         val assets = project.listAssets()
-        if (assets.isEmpty()) assetsRow.addView(label("No assets yet. Create a script or import images / sounds.", 12f, C.DIM).apply { setPadding(dp(8), dp(20), 0, 0) })
+        if (assets.isEmpty()) assetsRow.addView(label("No assets yet.", 12f, C.DIM).apply { setPadding(dp(8), dp(20), 0, 0) })
         for (name in assets) assetsRow.addView(assetCard(name), lp(dp(88), MATCH).margins(dp(3), 0, dp(3), 0))
     }
 
@@ -781,7 +946,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             card.addView(iv, lp(dp(56), dp(48)))
         } else {
             val (glyph, color) = when (kind) {
-                AssetKind.SCRIPT -> (if (name.endsWith(".bp")) "BP" to 0xFF4FC3F7.toInt() else if (com.sengine.engine.script.ScriptSystem.isCpp(name)) "C++" to 0xFF9CDCFE.toInt() else "JS" to C.YELLOW)
+                AssetKind.SCRIPT -> (if (name.endsWith(".gd")) "GD" to 0xFF4FC3F7.toInt() else if (name.endsWith(".lua")) "LUA" to 0xFF81D4FA.toInt() else if (name.endsWith(".bp")) "BP" to 0xFF4FC3F7.toInt() else "JS" to C.YELLOW)
                 AssetKind.SOUND -> "♪" to C.GREEN
                 AssetKind.SHADER -> "GLSL" to 0xFFE040FB.toInt()
                 AssetKind.ANIMATION -> "▶▶" to 0xFFFF8A65.toInt()
@@ -869,7 +1034,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                         g.add(MeshRenderer().also { it.mesh = MeshRenderer.MESHES.size - 1; it.model = name })
                         g
                     }
-                    if (!state.mode3D) toggle3D()
+                    if (!state.mode3D) setMode3D(true)
                     refreshHierarchy(); select(go.id)
                 }
                 sel != null && t.startsWith("Use model") -> {
@@ -920,7 +1085,6 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             project.assetsDir.mkdirs()
             contentResolver.openInputStream(uri)!!.use { input -> project.assetFile(n).outputStream().use { input.copyTo(it) } }
             refreshAssets()
-            showTab(1)
             toast("Imported $n")
         } catch (e: Exception) {
             toast("Import failed: ${e.message}")

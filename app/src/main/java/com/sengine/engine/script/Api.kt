@@ -24,6 +24,10 @@ class SObject(private val go: GameObject, private val engine: Engine, private va
     fun setName(v: String) { go.name = v }
     fun getTag(): String = go.tag
     fun setTag(v: String) { go.tag = v }
+    fun getLayer(): Double = go.layer.toDouble()
+    fun setLayer(v: Double) { go.layer = v.toInt() }
+    fun getGroup(): String = go.group
+    fun setGroup(v: String) { go.group = v }
     fun getActive(): Boolean = go.active
     fun setActive(v: Boolean) { go.active = v }
     fun getOrder(): Double = go.order.toDouble()
@@ -292,6 +296,10 @@ class SScene(private val engine: Engine, private val sys: ScriptSystem) {
     fun find(name: String): Any? = engine.scene.find(name)?.let { sys.toJs(it) }
     fun findAll(tag: String): Any? =
         sys.newArray(engine.scene.objects.filter { it.tag == tag && !it.destroyed && it.isActiveInHierarchy() }.map { sys.toJs(it) })
+    fun getInGroup(groupName: String): Any? =
+        sys.newArray(engine.scene.findInGroup(groupName).map { sys.toJs(it) })
+    fun getInLayer(layerId: Double): Any? =
+        sys.newArray(engine.scene.findInLayer(layerId.toInt()).map { sys.toJs(it) })
     fun count(tag: String): Double =
         engine.scene.objects.count { it.tag == tag && !it.destroyed && it.isActiveInHierarchy() }.toDouble()
     private fun spawnGo(name: String, x: Float, y: Float, z: Float?): GameObject? {
