@@ -22,10 +22,11 @@ object ComponentRegistry {
         "VoxelWorld" to { VoxelWorld() },
         "Water" to { Water() },
         "Landscape" to { Landscape() },
+        "Tilemap" to { Tilemap() },
     )
 
     val categories: LinkedHashMap<String, List<String>> = linkedMapOf(
-        "Rendering 2D" to listOf("SpriteRenderer", "TextRenderer", "Animator", "ParticleEmitter", "Camera"),
+        "Rendering 2D" to listOf("SpriteRenderer", "TextRenderer", "Tilemap", "Animator", "ParticleEmitter", "Camera"),
         "Rendering 3D" to listOf("MeshRenderer", "Camera3D", "Light"),
         "Physics 2D" to listOf("Rigidbody2D", "Collider2D", "Water"),
         "Physics 3D" to listOf("Rigidbody3D", "Collider3D"),
@@ -460,6 +461,63 @@ class Rigidbody3D : Component() {
     var sleepTime = 0f
 
     override fun resetRuntime() { vx = startVx; vy = startVy; vz = startVz; grounded = false; sleepTime = 0f }
+}
+
+class Tilemap : Component() {
+    override val type = "Tilemap"
+    var cols = 16
+    var rows = 12
+    var tileSize = 1f
+    var texture = ""
+    var tilesetCols = 8
+    var tilesetRows = 8
+    var tileData = "" // CSV string of tile IDs (0 = empty)
+    var generateCollisions = true
+
+    private var gridCache: IntArray? = null
+
+    fun grid(): IntArray {
+        val total = cols * rows
+        val cache = gridCache
+        if (cache != null && cache.size == total) return cache
+        val arr = IntArray(total)
+        if (tileData.isNotBlank()) {
+            val parts = tileData.split(',')
+            for (i in 0 until minOf(total, parts.size)) {
+                arr[i] = parts[i].trim().toIntOrNull() ?: 0
+            }
+        }
+        gridCache = arr
+        return arr
+    }
+
+    fun getTile(c: Int, r: Int): Int {
+        if (c !in 0 until cols || r !in 0 until rows) return 0
+        return grid()[r * cols + c]
+    }
+
+    fun setTile(c: Int, r: Int, tileId: Int) {
+        if (c !in 0 until cols || r !in 0 until rows) return
+        val g = grid()
+        g[r * cols + c] = tileId
+        tileData = g.joinToString(",")
+    }
+
+    fun clear() {
+        tileData = ""
+        gridCache = IntArray(cols * rows)
+    }
+
+    override fun props() = listOf(
+        Prop.I("Columns", { cols }, { cols = it.coerceIn(1, 256); gridCache = null }),
+        Prop.I("Rows", { rows }, { rows = it.coerceIn(1, 256); gridCache = null }),
+        Prop.F("Tile Size", { tileSize }, { tileSize = it.coerceAtLeast(0.01f) }),
+        Prop.Asset("Tileset Texture", AssetKind.TEXTURE, { texture }, { texture = it }),
+        Prop.I("Tileset Cols", { tilesetCols }, { tilesetCols = it.coerceIn(1, 64) }),
+        Prop.I("Tileset Rows", { tilesetRows }, { tilesetRows = it.coerceIn(1, 64) }),
+        Prop.S("Tile Data", { tileData }, { tileData = it; gridCache = null }),
+        Prop.B("Generate Collisions", { generateCollisions }, { generateCollisions = it }),
+    )
 }
 
 class Collider3D : Component() {

@@ -13,6 +13,7 @@ import com.sengine.engine.core.MeshRenderer
 import com.sengine.engine.core.ParticleEmitter
 import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.core.TextRenderer
+import com.sengine.engine.core.Tilemap
 import com.sengine.engine.core.UIButton
 import com.sengine.engine.core.UIPanel
 import com.sengine.engine.core.UIProgress
@@ -182,10 +183,43 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 }
             }
         }
+        go.get<Tilemap>()?.let { tm -> if (m3 == null) drawTilemap(go, tm, ppu) }
         go.getAny<ParticleEmitter>()?.let { pe -> drawParticles(pe, ppu, if (m3 != null) m3[14] else null) }
         go.get<com.sengine.engine.core.Water>()?.let { wa ->
             if (wa.mode == 0 && m3 == null) drawWater2D(go, wa, ppu)
             else if (wa.mode == 1 && m3 != null) drawWater3D(wa, m3)
+        }
+    }
+
+    private fun drawTilemap(go: GameObject, tm: Tilemap, ppu: Float) {
+        val tex = if (tm.texture.isNotBlank()) textures.image(tm.texture) else null
+        val w = go.world
+        val grid = tm.grid()
+        val tsCols = tm.tilesetCols.coerceAtLeast(1)
+        val tsRows = tm.tilesetRows.coerceAtLeast(1)
+        val tileW = tm.tileSize
+        val tileH = tm.tileSize
+        val uvBuf = FloatArray(4)
+
+        for (row in 0 until tm.rows) {
+            for (c in 0 until tm.cols) {
+                val tileId = grid[row * tm.cols + c]
+                if (tileId <= 0) continue
+                val idx = tileId - 1
+                val colIdx = idx % tsCols
+                val tsRowIdx = idx / tsCols
+                val u0 = colIdx.toFloat() / tsCols
+                val v0 = 1f - (tsRowIdx + 1).toFloat() / tsRows
+                val u1 = (colIdx + 1).toFloat() / tsCols
+                val v1 = 1f - tsRowIdx.toFloat() / tsRows
+                uvBuf[0] = u0; uvBuf[1] = v0; uvBuf[2] = u1; uvBuf[3] = v1
+
+                val tx = w.tx + (c - tm.cols / 2f + 0.5f) * tileW * w.scaleX
+                val ty = w.ty + (row - tm.rows / 2f + 0.5f) * tileH * w.scaleY
+
+                tmp.a = tileW * w.scaleX; tmp.b = 0f; tmp.c = 0f; tmp.d = tileH * w.scaleY; tmp.tx = tx; tmp.ty = ty
+                r.quad(tmp, 0xFFFFFFFF.toInt(), 0, tex, tileW * ppu, false, false, uvBuf)
+            }
         }
     }
 

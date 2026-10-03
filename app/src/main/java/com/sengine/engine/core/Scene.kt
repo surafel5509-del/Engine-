@@ -49,6 +49,12 @@ class Scene(var name: String) {
         return fallback
     }
 
+    fun findInGroup(groupName: String): List<GameObject> =
+        objects.filter { it.group == groupName && !it.destroyed && it.isActiveInHierarchy() }
+
+    fun findInLayer(layerId: Int): List<GameObject> =
+        objects.filter { it.layer == layerId && !it.destroyed && it.isActiveInHierarchy() }
+
     fun childrenOf(go: GameObject?) = objects.filter { it.parent === go }
 
     /** Depth-first hierarchy listing with depth. */
@@ -115,6 +121,8 @@ object SceneSerializer {
         o.put("id", go.id)
         o.put("name", go.name)
         o.put("tag", go.tag)
+        o.put("layer", go.layer)
+        o.put("group", go.group)
         o.put("active", go.active)
         o.put("order", go.order)
         o.put("x", go.x.toDouble()); o.put("y", go.y.toDouble())
@@ -134,6 +142,8 @@ object SceneSerializer {
     /** Applies everything except id and parent. */
     fun applyObjectJson(go: GameObject, o: JSONObject) {
         go.tag = o.optString("tag", "Untagged")
+        go.layer = o.optInt("layer", 0)
+        go.group = o.optString("group", "")
         go.active = o.optBoolean("active", true)
         go.order = o.optInt("order", 0)
         go.x = o.optDouble("x", 0.0).toFloat()
