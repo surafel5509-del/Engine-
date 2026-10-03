@@ -5,6 +5,8 @@ import com.sengine.engine.math.Mat4
 
 class GameObject(var id: Long, var name: String) {
     var tag: String = "Untagged"
+    var layer: Int = 0
+    var group: String = ""
     var active: Boolean = true
     /** Sorting order: higher is drawn on top. */
     var order: Int = 0

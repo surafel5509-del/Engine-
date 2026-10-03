@@ -38,6 +38,12 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
         <activity
+            android:name=".ui.TilemapEditorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
             android:name=".ui.PlayerActivity"
             android:exported="false"
             android:theme="@style/Theme.SEngine.Fullscreen"

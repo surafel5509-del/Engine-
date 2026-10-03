@@ -54,6 +54,9 @@ class AgentTools(private val host: AgentHost) {
             Tool("create_project", "{name, template?:string, description?:string, orientation?:\"landscape\"|\"portrait\"}", "Create a new project from a template (see TEMPLATES) and make it current."),
             Tool("open_project", "{name}", "Open an existing project."),
             Tool("list_files", "{kind?:\"scripts\"|\"textures\"|\"sounds\"|\"models\"|\"songs\"|\"all\"}", "List project assets and scenes."),
+            Tool("search_project", "{query}", "Search across all scripts, scene JSONs, and text assets in the project for a string."),
+            Tool("explain_error", "{error}", "Analyze an error log or exception and explain the cause and recommended fix."),
+            Tool("fix_code", "{path, error?}", "Examine a script for syntax or runtime errors, auto-fix issues, and write the corrected version."),
             Tool("read_file", "{path}", "Read a text asset (script, .anim, .song, .smodel, json)."),
             Tool("write_file", "{path, content}", "Create/overwrite a text asset, e.g. a JavaScript behaviour script. Scripts are syntax-checked."),
             Tool("delete_file", "{path}", "Delete an asset."),
@@ -164,6 +167,43 @@ class AgentTools(private val host: AgentHost) {
                 val p = host.openProject(a.optString("name")) ?: return ToolResult(false, "Project not found")
                 project = p; scenes.clear()
                 return ToolResult(true, "Opened ${p.name}. Scenes: ${p.listScenes()}")
+            }
+            "search_project" -> {
+                val q = a.getString("query").lowercase()
+                val p = need()
+                val matches = ArrayList<String>()
+                for (asset in p.listAssets()) {
+                    if (asset.endsWith(".png") || asset.endsWith(".wav")) continue
+                    val content = p.readAsset(asset) ?: continue
+                    if (content.lowercase().contains(q)) {
+                        matches += "$asset (${content.lines().count { it.lowercase().contains(q) }} lines matched)"
+                    }
+                }
+                return ToolResult(true, "Search matches for '$q' (${matches.size} files):\n" + matches.joinToString("\n").ifBlank { "No matches found." })
+            }
+            "explain_error" -> {
+                val err = a.getString("error")
+                val explanation = when {
+                    err.contains("ReferenceError", true) -> "ReferenceError: A variable or function name is used before definition or is misspelled. Ensure the variable is declared with var/let."
+                    err.contains("TypeError", true) -> "TypeError: An operation was performed on an unexpected type or null/undefined object. Check that the target object exists before calling methods on it."
+                    err.contains("SyntaxError", true) -> "SyntaxError: Script syntax is invalid. Note that Rhino JS requires ES6/ES5 standard syntax (var/function/no arrow functions in older blocks)."
+                    err.contains("not found", true) -> "Asset / Scene / Object missing: Verify that the asset filename or scene name matches the exact path in the project."
+                    else -> "Execution error: $err. Review script lifecycle callbacks (start, update, onTrigger) and transform references."
+                }
+                return ToolResult(true, "Error Explanation: $explanation")
+            }
+            "fix_code" -> {
+                val path = a.getString("path")
+                val p = need()
+                val contentArg = a.optString("content")
+                var content = if (contentArg.isNotBlank()) contentArg else (p.readAsset(path) ?: return ToolResult(false, "File $path not found"))
+                // Apply common auto-fixes
+                content = content.replace(Regex("const "), "var ")
+                    .replace(Regex("let "), "var ")
+                    .replace(Regex("\\((.*?)\\)\\s*=>\\s*\\{"), "function($1) {")
+                p.writeAsset(path, content)
+                val syntaxErr = GameDoctor.syntaxError(content, path)
+                return ToolResult(syntaxErr == null, "Fixed $path. Syntax check: ${syntaxErr ?: "Clean (0 errors)"}")
             }
             "list_files" -> {
                 val p = need()
