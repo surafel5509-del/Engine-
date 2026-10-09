@@ -13,12 +13,15 @@ import com.sengine.engine.core.MeshRenderer
 import com.sengine.engine.core.ParticleEmitter
 import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.core.TextRenderer
+import com.sengine.engine.core.TileMap
+import com.sengine.engine.core.Tilemap
 import com.sengine.engine.core.UIButton
 import com.sengine.engine.core.UIPanel
 import com.sengine.engine.core.UIProgress
 import com.sengine.engine.core.VoxelWorld
 import com.sengine.engine.math.Affine
 import com.sengine.engine.math.Mat4
+import org.json.JSONObject
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.abs
@@ -154,7 +157,10 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
     /** Draws sprite / text / particles of [go]. When [m3] is given the object is placed in 3D with that matrix. */
     private fun drawObject2D(go: GameObject, ppu: Float, m3: FloatArray?) {
         val w = go.world
-        if (m3 == null) drawUI(go, w, ppu)
+        if (m3 == null) {
+            drawUI(go, w, ppu)
+            go.getAny<TileMap>()?.let { tm -> drawTilemap(go, tm, ppu) }
+        }
         go.get<SpriteRenderer>()?.let { sr ->
             val texName = sr.animTexture ?: sr.texture
             val tex = if (texName.isNotBlank()) textures.image(texName) else null
@@ -260,6 +266,57 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
 
     private val tileBuf = FloatArray(4)
     private fun tileUv(tx: Float, ty: Float): FloatArray { tileBuf[0] = 0f; tileBuf[1] = ty; tileBuf[2] = tx; tileBuf[3] = 0f; return tileBuf }
+
+    // ------------------------------------------------------------------ tilemaps
+
+    private val tmUv = FloatArray(4)
+    private val tmLocal = Affine()
+    private val tmQuad = Affine()
+
+    /**
+     * Draws a [TileMap] component's layer stack in 2D world space. Horizontal runs of the same
+     * tile collapse into a single stretched quad, so a full floor row costs one draw call.
+     */
+    private fun drawTilemap(go: GameObject, tm: TileMap, ppu: Float) {
+        val file = engine.project.assetFile(tm.map)
+        val doc = tm.ensure("${tm.map}|${file.lastModified()}|${file.length()}") {
+            if (tm.map.isBlank() || !file.exists()) null
+            else try {
+                Tilemap.fromJson(JSONObject(file.readText()))
+            } catch (_: Exception) {
+                null
+            }
+        } ?: return
+        if (doc.tileset.isBlank()) return
+        val tex = textures.image(doc.tileset) ?: return
+        val atlasCols = (tex.w / doc.tileW.coerceAtLeast(1)).coerceAtLeast(1)
+        val atlasRows = (tex.h / doc.tileH.coerceAtLeast(1)).coerceAtLeast(1)
+        val ts = tm.tileSize
+        if (ts <= 0f) return
+        val w = go.world
+        val tintA = GL.a(tm.tint)
+        for (layer in doc.layers) {
+            if (!layer.visible) continue
+            val alpha = tm.opacity * layer.opacity
+            if (alpha <= 0.004f) continue
+            val color = (tm.tint and 0x00FFFFFF) or (((tintA * alpha).toInt().coerceIn(0, 255)) shl 24)
+            for (run in layer.runs()) {
+                val cell = run[3]
+                val ac = cell % atlasCols
+                val ar = cell / atlasCols
+                if (ar >= atlasRows) continue
+                tmUv[0] = ac.toFloat() / atlasCols
+                tmUv[1] = (ar + 1).toFloat() / atlasRows
+                tmUv[2] = (ac + 1).toFloat() / atlasCols
+                tmUv[3] = ar.toFloat() / atlasRows
+                val len = run[2].toFloat()
+                tmLocal.a = ts * len; tmLocal.b = 0f; tmLocal.c = 0f; tmLocal.d = ts
+                tmLocal.tx = (run[0] + len / 2f) * ts; tmLocal.ty = (run[1] + 0.5f) * ts
+                tmQuad.setMul(w, tmLocal)
+                r.quad(tmQuad, color, 0, tex, ts * abs(w.scaleY) * ppu, false, false, tmUv)
+            }
+        }
+    }
 
     /** Game UI components (panel, button, progress bar). */
     private fun drawUI(go: GameObject, w: Affine, ppu: Float) {
@@ -670,6 +727,7 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
                 r.line(w.tx, w.ty - s, w.tx, w.ty + s, 0xCCFFFFFF.toInt())
             }
             if (ed.showColliders || go.id == ed.selectedId) go.get<Collider2D>()?.let { c -> drawCollider(go, c) }
+            go.getAny<TileMap>()?.let { tm -> drawTilemapOutline(w, tm, ed.selectedId == go.id) }
             if (go.get<SpriteRenderer>() == null && go.get<TextRenderer>() == null && go.get<Camera2D>() == null) {
                 val s = 8f / ppu
                 r.line(w.tx - s, w.ty, w.tx, w.ty + s, 0x99FFFFFF.toInt())
@@ -684,6 +742,21 @@ class SceneRenderer(private val engine: Engine, private val editor: EditorState?
             r.flushLines(2f)
             drawGizmo(sel, ed, ppu)
         } else r.flushLines(2f)
+    }
+
+    /** Bounds (and, when selected, the tile grid) of a tilemap in the editor viewport. */
+    private fun drawTilemapOutline(w: Affine, tm: TileMap, selected: Boolean) {
+        val doc = tm.doc ?: return
+        val cols = doc.cols; val rows = doc.rows
+        if (cols <= 0 || rows <= 0) return
+        val ts = tm.tileSize
+        val right = cols * ts
+        val top = rows * ts
+        val c = if (selected) 0xFFFF9F1C.toInt() else 0x55FFD33D.toInt()
+        r.line(w.mapX(0f, 0f), w.mapY(0f, 0f), w.mapX(right, 0f), w.mapY(right, 0f), c)
+        r.line(w.mapX(right, 0f), w.mapY(right, 0f), w.mapX(right, top), w.mapY(right, top), c)
+        r.line(w.mapX(right, top), w.mapY(right, top), w.mapX(0f, top), w.mapY(0f, top), c)
+        r.line(w.mapX(0f, top), w.mapY(0f, top), w.mapX(0f, 0f), w.mapY(0f, 0f), c)
     }
 
     private fun drawCollider(go: GameObject, c: Collider2D) {

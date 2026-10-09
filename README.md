@@ -4,6 +4,31 @@
 
 > Native Android SDK + **NDK** project: the Kotlin editor/runtime (OpenGL ES renderer, 2D/3D physics, tools) sits on top of `libsengine.so`, a C++17 engine layer built with CMake for arm64-v8a, armeabi-v7a and x86_64. It holds the C++ script VM and the landscape generator.
 
+**Docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`ROADMAP.md`](ROADMAP.md) · [`TODO.md`](TODO.md)
+
+## 🧱 Tilemap system (Milestone 1)
+
+New this milestone — the whole tilemap feature, engine-first:
+
+- **Tilemap Editor** (`⋮ → Tilemap Editor`, the `+ Tilemap` asset button, or *Edit Tilemap…* on a
+  Tile Map object): touch-first brush / eraser / rectangle / eyedropper, pan + pinch-zoom,
+  path-interpolated drag painting, per-stroke undo/redo, layer panel
+  (add · rename · hide · **solid** · opacity · clear · delete), map resize, tileset picker with
+  automatic tile-size detection, and an offline **starter-tileset generator** (8×4 atlas, no
+  download needed).
+- **`.tmap` assets** live in the project's asset folder, so one level can be shared by several
+  scenes and prefabs instead of being trapped inside a scene.
+- **`TileMap` component** — tileset, tile size, opacity, tint; layers are run-length compressed
+  (`-1*12,5,-1*4`), keeping large sparse levels small.
+- **Rendering** — atlas UV slicing with horizontal runs of identical tiles merged into one
+  stretched quad, so a solid floor row costs a **single draw call**. Per-layer visibility and
+  opacity, component tint, and live reload when the `.tmap` file changes on disk.
+- **Collision data ready** — `Tilemap.solidAt()` and `solidRects()` (vertically merged boxes) are
+  implemented and unit tested. Wiring them into `PhysicsWorld` is milestone **M2**.
+- **Tests** — `EngineTilemapTest` (14 tests): cells, bounds, resize anchoring, run merging,
+  solids, collision rectangles, the RLE codec, JSON round-trip, and the component surviving
+  scene serialization.
+
 ## 🎬 v6 Model & Animation Studio (round 1)
 
 The 3D Model Editor is now a small Blender-style studio. The heavy mesh work runs in native C++ (`app/src/main/cpp/engine/ModelKit.cpp`) through JNI.
@@ -77,6 +102,7 @@ The 3D Model Editor is now a small Blender-style studio. The heavy mesh work run
 | **Undo / Redo** | Snapshot-based history for every edit |
 | **Play mode** | Play / Pause / Step frame inside the editor; scene is restored when you stop (like Unity) |
 | **Rendering** | Squares, circles, triangles, textured sprites (PNG/JPG/WebP) with flip, text, particles, sorting order, camera background |
+| **Tilemaps** | `.tmap` tilemap assets + `TileMap` component, multi-layer painting editor with pan/zoom and undo, run-merged quad rendering, per-layer solid flags, offline tileset generator, saved collision geometry for physics |
 | **Physics 2D** | Dynamic / Kinematic / Static rigidbodies, box & circle colliders, gravity, bounciness, friction, drag, triggers, collision & trigger callbacks, `grounded` detection |
 | **Scripting** | JavaScript (ES6 subset via Rhino) with `start`, `update(dt)`, `onCollision`, `onTrigger`, `onTap`… plus timers, spawning, messaging |
 | **Code editor** | Syntax highlighting, auto-indent, undo/redo, quick-symbol keyboard row, built-in API reference |
@@ -87,7 +113,18 @@ The 3D Model Editor is now a small Blender-style studio. The heavy mesh work run
 | **Player** | Full-screen runtime ("Build & Run") with landscape / portrait setting |
 
 ### Built-in components
-`SpriteRenderer`, `TextRenderer`, `Camera` (size, background, follow target with smoothing), `Rigidbody2D`, `Collider2D`, `Script`, `ParticleEmitter`, `AudioSource`.
+`SpriteRenderer`, `TextRenderer`, `Camera` (size, background, follow target with smoothing), `Rigidbody2D`, `Collider2D`, `Script`, `ParticleEmitter`, `AudioSource`, `Animator`, `TileMap`.
+
+### Tilemaps
+1. Assets bar → **+ Tilemap** (or `⋮ → Tilemap Editor`) → **New** to create `Level1.tmap`.
+2. Tap the **palette** button to **generate a starter tileset** (or the **image** button to pick one of
+   your imported textures).
+3. Pick a tile, drag to paint; use **Erase**, **Rectangle**, **Pipette**; pinch to zoom, two
+   fingers to pan. Layer panel: **Layers** button · resize: **frame** button · fit: **target**.
+4. In the scene: **+ → 2D Object → Tile Map**, then set **Tilemap** in the Inspector (or right-click
+   the object → *New Tilemap…*). `Tile Size` scales the whole map; `Opacity`/`Tint` tint it.
+5. Mark a layer **Solid** (layer options) to record collision for that layer — physics integration
+   lands in milestone M2.
 
 ### Templates
 * **Empty 2D** – camera + square
@@ -167,7 +204,7 @@ Requirements: JDK 17 and the Android SDK (API 34). Android Studio Hedgehog or ne
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Every push is also built by GitHub Actions (`.github/workflows/android.yml`); download the APK from the run's **Artifacts** section.
+The APK is built in debug mode, so **you must run the debug build, not the dev server, to download it from GitHub Actions** (the dev server only serves the project locally). Every push is also built by GitHub Actions (`.github/workflows/android.yml`); download the APK from the run's **Artifacts** section.
 
 Minimum Android version: 8.0 (API 26). Requires OpenGL ES 2.0.
 
@@ -178,7 +215,7 @@ app/src/main/java/com/sengine/
 ├── engine/
 │   ├── Engine.kt            main loop, play/pause/stop, camera follow, particles
 │   ├── Input.kt, AudioSystem.kt
-│   ├── core/                GameObject, Component, Prop system, components, Scene + JSON serializer
+│   ├── core/                GameObject, Component, Prop system, components (incl. TileMap), Scene + JSON serializer
 │   ├── math/                Affine (2D) and Mat4 (3D) transforms
 │   ├── physics/             impulse-based 2D and 3D physics
 │   ├── anim/                animation clips + Animator system
@@ -189,9 +226,15 @@ app/src/main/java/com/sengine/
 ├── export/                  APK builder: zip writer, manifest (AXML) patcher, v2 signer, keys, game runtime
 ├── project/                 project storage, zip import/export, templates, asset store library
 └── ui/                      Projects screen, Editor (hierarchy, inspector, viewport, assets, console),
-                             Script / shader editor, Blueprint editor, Animation editor, Asset Store,
-                             Build APK screen, full-screen Player, joystick, color picker
+                             Script / shader editor, Blueprint editor, Animation editor, Tilemap editor,
+                             Asset Store, Build APK screen, full-screen Player, joystick, color picker
 ```
+
+Documents describing the codebase:
+
+* [`ARCHITECTURE.md`](ARCHITECTURE.md) — layer map, dependency rules, scene/asset formats, verification matrix
+* [`ROADMAP.md`](ROADMAP.md) — milestones M0–M10 with status, and the gap analysis against the product request
+* [`TODO.md`](TODO.md) — prioritized work list and known limitations
 
 Projects are stored in app-private storage as plain JSON scenes plus an `assets/` folder:
 
