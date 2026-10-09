@@ -4,6 +4,8 @@ import com.sengine.engine.core.Collider2D
 import com.sengine.engine.core.GameObject
 import com.sengine.engine.core.Rigidbody2D
 import com.sengine.engine.core.Scene
+import com.sengine.engine.core.TileMap
+import com.sengine.engine.core.Tilemap
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -40,9 +42,45 @@ class PhysicsWorld {
     private var prevContacts = HashSet<Long>()
     private var prevTriggers = HashSet<Long>()
 
+    private data class TileBody(val go: GameObject, val body: Body)
+    private val tileBodies = ArrayList<TileBody>()
+
+    /** Clears cached tilemap static bodies. Call after tilemap docs change so the next step rebuilds them. */
+    fun refreshTileColliders() {
+        tileBodies.clear()
+    }
+
+    /** Resets the physics simulation to a clean initial state (called when a scene starts playing). */
     fun reset() {
         accumulator = 0f
-        prevContacts = HashSet(); prevTriggers = HashSet()
+        prevContacts.clear()
+        prevTriggers.clear()
+        tileBodies.clear()
+    }
+
+    /** Rebuilds static box bodies for every active [TileMap] whose document is loaded. */
+    private fun refreshTileBodies(scene: Scene) {
+        tileBodies.clear()
+        for (go in scene.objects) {
+            if (!go.isActiveInHierarchy()) continue
+            val tm = go.get<TileMap>() ?: continue
+            val doc = tm.doc ?: continue
+            val solidRects = doc.solidRects()
+            for (rect in solidRects) {
+                val x = rect[0] * tm.tileSize + go.x
+                val y = rect[1] * tm.tileSize + go.y
+                val w = rect[2] * tm.tileSize
+                val h = rect[3] * tm.tileSize
+                val col = Collider2D().apply { shape = 0; width = w; height = h }
+                val body = Body(go, null, col, x, y, w / 2f, h / 2f, 0f)
+                tileBodies.add(TileBody(go, body))
+            }
+        }
+    }
+
+    /** Static bodies belonging to a specific tilemap component. */
+    private fun tileBodiesFor(tilemap: TileMap): List<Body> {
+        return tileBodies.filter { it.go == tilemap.gameObject }.map { it.body }
     }
 
     fun step(scene: Scene, dt: Float) {
@@ -59,6 +97,8 @@ class PhysicsWorld {
     private fun fixedStep(scene: Scene, dt: Float) {
         val waters = WaterPhysics.volumes(scene, 0)
         for (w in waters) w.tick(dt, scene.gravityY.coerceAtMost(-4f))
+        // rebuild tilemap static bodies after invalidation or on first use
+        if (tileBodies.isEmpty()) refreshTileBodies(scene)
         // integrate
         for (go in scene.objects) {
             if (!go.isActiveInHierarchy()) continue
@@ -82,12 +122,17 @@ class PhysicsWorld {
 
         // gather bodies
         val bodies = ArrayList<Body>()
+        val tileBodiesThisFrame = tileBodies.toList()
         for (go in scene.objects) {
             if (!go.isActiveInHierarchy()) continue
             val col = go.get<Collider2D>() ?: continue
             val b = Body(go, go.get(), col)
             refresh(b)
             bodies.add(b)
+            for (tb in tileBodiesThisFrame) {
+                if (tb.go == go) continue
+                bodies.add(tb.body)
+            }
         }
 
         val contacts = HashSet<Long>()

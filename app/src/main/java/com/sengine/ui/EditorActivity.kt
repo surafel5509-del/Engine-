@@ -46,6 +46,8 @@ import com.sengine.engine.core.Scene
 import com.sengine.engine.core.ScriptComponent
 import com.sengine.engine.core.SpriteRenderer
 import com.sengine.engine.core.TextRenderer
+import com.sengine.engine.core.TileMap
+import com.sengine.engine.core.Tilemap
 import com.sengine.engine.render.EditorState
 import com.sengine.engine.render.SceneRenderer
 import com.sengine.engine.render.Tool
@@ -310,6 +312,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         assetButtons.addView(button("+ Texture") { saveScene(silent = true); startActivity(Intent(this, TextureStudioActivity::class.java).putExtra("project", project.name)) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Shader") { newAssetDialog("New Shader", "NewShader", "glsl", { Templates.NEW_SHADER }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Animation") { newAssetDialog("New Animation", "NewAnimation", "anim", { com.sengine.engine.anim.AnimationClip().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
+        assetButtons.addView(button("+ Tilemap") { newAssetDialog("New Tilemap", "Level", Tilemap.EXT, { com.sengine.engine.core.Tilemap.starter().toJson().toString(2) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ Song") { newAssetDialog("New Song", "Theme", "song", { MusicEditorActivity.newSongJson(it.substringBeforeLast('.')) }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("+ 3D Model") { newAssetDialog("New 3D Model", "MyModel", "smodel", { ModelEditorActivity.newModelJson() }) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
         assetButtons.addView(button("Import Model") { importKind = AssetKind.MODEL; importLauncher.launch(arrayOf("*/*")) }.apply { textSize = 12f }, lp(WRAP, WRAP).margins(dp(2), 0, dp(2), 0))
@@ -402,6 +405,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     override fun openScript(name: String) {
         when (AssetKind.of(name)) {
             AssetKind.ANIMATION -> openAnimationEditor(name)
+            AssetKind.TILEMAP -> openTilemapEditor(name)
             AssetKind.SONG -> { saveScene(silent = true); startActivity(Intent(this, MusicEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name)) }
             AssetKind.MODEL -> if (name.endsWith(".smodel")) { saveScene(silent = true); startActivity(Intent(this, ModelEditorActivity::class.java).putExtra("project", project.name).putExtra("asset", name)) }
                 else toast("OBJ models are read-only — create a .smodel to edit in the Model Editor")
@@ -415,7 +419,12 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         startActivity(Intent(this, AnimationEditorActivity::class.java).putExtra("project", project.name).apply { if (name != null) putExtra("asset", name) })
     }
 
-    private fun newAssetDialog(title: String, base: String, ext: String, content: (String) -> String, open: Boolean = true) {
+    fun openTilemapEditor(name: String?) {
+        saveScene(silent = true)
+        startActivity(Intent(this, TilemapEditorActivity::class.java).putExtra("project", project.name).apply { if (name != null) putExtra("asset", name) })
+    }
+
+    private fun newAssetDialog(title: String, base: String, ext: String, content: (String) -> String, open: Boolean = true, onCreated: (String) -> Unit = {}) {
         val f = field(base)
         MaterialAlertDialogBuilder(this)
             .setTitle(title)
@@ -426,6 +435,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 n = project.uniqueAssetName(n)
                 project.writeAsset(n, content(n))
                 refreshAssets()
+                onCreated(n)
                 if (open) openScript(n)
             }
             .setNegativeButton("Cancel", null)
@@ -505,7 +515,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         pm.menu.add("Empty"); pm.menu.add("Empty Child")
         val m2 = pm.menu.addSubMenu("2D Object")
         listOf("Square", "Circle", "Triangle", "Text", "UI Text", "Camera", "Particle System",
-            "Physics Box", "Physics Ball", "Static Platform", "Trigger Zone", "Animated Sprite").forEach { m2.add(it) }
+            "Tile Map", "Physics Box", "Physics Ball", "Static Platform", "Trigger Zone", "Animated Sprite").forEach { m2.add(it) }
         val m3 = pm.menu.addSubMenu("3D Object")
         listOf("Cube", "Sphere", "Plane", "Cylinder", "Cone", "Torus", "Capsule", "Pyramid",
             "Physics Cube 3D", "Physics Sphere 3D", "Ground 3D", "Landscape (C++ terrain)", "3D Camera", "Directional Light", "Point Light").forEach { m3.add(it) }
@@ -556,6 +566,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 "Directional Light" -> { g.rotX = -50f; g.rotY = 30f; g.add(Light()) }
                 "Point Light" -> { g.y += 2f; g.add(Light().also { it.kind = 1; it.color = 0xFFFFC870.toInt() }) }
                 "UI Text" -> { g.x = 0f; g.y = 4f; g.add(TextRenderer().also { it.screenSpace = true; it.text = "Score: 0" }) }
+                "Tile Map" -> g.add(TileMap().also { it.map = project.listAssets(AssetKind.TILEMAP).firstOrNull() ?: "" })
                 "Animated Sprite" -> { g.add(SpriteRenderer()); g.add(Animator()) }
                 "Empty", "Empty Child" -> g.name = scene.uniqueName("GameObject")
                 "Square" -> g.add(SpriteRenderer())
@@ -584,10 +595,18 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         if (engine.mode != Engine.Mode.EDIT) { select(go.id); return }
         val pm = PopupMenu(this, anchor)
         listOf("Rename", "Duplicate", "Delete", "Create Child", "Move Up", "Move Down", "Unparent", "Frame in View").forEach { pm.menu.add(it) }
+        val tilemap = go.getAny<TileMap>()
+        if (tilemap != null) { pm.menu.add("Edit Tilemap…"); if (tilemap.map.isBlank()) pm.menu.add("New Tilemap…") }
         pm.setOnMenuItemClickListener { item ->
             when (item.title) {
                 "Rename" -> renameDialog(go)
                 "Frame in View" -> controller.frame(go)
+                "Edit Tilemap…" -> openTilemapEditor(tilemap?.map?.takeIf { it.isNotBlank() })
+                "New Tilemap…" -> newAssetDialog("New Tilemap", "Level", Tilemap.EXT, { com.sengine.engine.core.Tilemap.starter().toJson().toString(2) }, open = false) { name ->
+                    tilemap?.let { tm -> tm.map = name; tm.invalidate() }
+                    inspector.rebuild()
+                    openTilemapEditor(name)
+                }
                 else -> {
                     history.record(state.selectedId)
                     var newSel = state.selectedId
@@ -636,7 +655,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private fun mainMenu(anchor: View) {
         val pm = PopupMenu(this, anchor)
         val entries = listOf(
-            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
+            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Tilemap Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
             (if (state.showProfiler) "Hide" else "Show") + " Profiler",
             (if (state.showGrid) "Hide" else "Show") + " Grid",
             (if (state.showColliders) "Hide" else "Show") + " Colliders",
@@ -653,6 +672,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Build APK…" -> { saveScene(silent = true); startActivity(Intent(this, BuildActivity::class.java).putExtra("project", project.name)) }
                 t == "Asset Store" -> startActivity(Intent(this, AssetStoreActivity::class.java).putExtra("project", project.name))
                 t == "Animation Editor" -> openAnimationEditor(null)
+                t == "Tilemap Editor" -> openTilemapEditor(null)
                 t == "AI Agent" -> { saveScene(silent = true); startActivity(Intent(this, AgentActivity::class.java)) }
                 t == "Sprite Studio" -> { saveScene(silent = true); startActivity(Intent(this, SpriteStudioActivity::class.java).putExtra("project", project.name)) }
                 t == "Texture Studio" -> { saveScene(silent = true); startActivity(Intent(this, TextureStudioActivity::class.java).putExtra("project", project.name)) }
@@ -786,6 +806,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 AssetKind.SHADER -> "GLSL" to 0xFFE040FB.toInt()
                 AssetKind.ANIMATION -> "▶▶" to 0xFFFF8A65.toInt()
                 AssetKind.MODEL -> "3D" to 0xFF80CBC4.toInt()
+                AssetKind.TILEMAP -> "TMS" to 0xFF7FE3C4.toInt()
                 else -> "?" to C.DIM
             }
             card.addView(label(glyph, 20f, color, true).apply { gravity = Gravity.CENTER }, lp(dp(56), dp(48)))
@@ -806,6 +827,11 @@ class EditorActivity : AppCompatActivity(), EditorHost {
             AssetKind.ANIMATION -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Play on ${sel.name}") }
             AssetKind.MODEL -> { if (name.endsWith(".smodel")) pm.menu.add("Edit"); pm.menu.add("Create 3D Model Object"); if (sel != null) pm.menu.add("Use model on ${sel.name}") }
             AssetKind.SONG -> { pm.menu.add("Edit"); if (sel != null) pm.menu.add("Add AudioSource to ${sel.name}") }
+            AssetKind.TILEMAP -> {
+                pm.menu.add("Edit")
+                pm.menu.add("Create Tilemap Object")
+                if (sel != null) pm.menu.add("Use tilemap on ${sel.name}")
+            }
             AssetKind.DATA -> pm.menu.add("Edit")
             null -> {}
         }
@@ -858,6 +884,23 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                     synchronized(engine.lock) {
                         if (sel.getAny<SpriteRenderer>() == null) sel.add(SpriteRenderer())
                         (sel.getAny<Animator>() ?: sel.add(Animator())).clip = name
+                    }
+                    inspector.rebuild()
+                }
+                t == "Create Tilemap Object" -> {
+                    history.record(state.selectedId)
+                    val go = synchronized(engine.lock) {
+                        val g = engine.scene.create(name.substringBeforeLast('.'))
+                        g.x = snap(state.view.cx); g.y = snap(state.view.cy)
+                        g.add(TileMap().also { it.map = name })
+                        g
+                    }
+                    refreshHierarchy(); select(go.id)
+                }
+                sel != null && t.startsWith("Use tilemap") -> {
+                    history.record(state.selectedId)
+                    synchronized(engine.lock) {
+                        (sel.getAny<TileMap>() ?: sel.add(TileMap())).also { it.map = name; it.invalidate() }
                     }
                     inspector.rebuild()
                 }

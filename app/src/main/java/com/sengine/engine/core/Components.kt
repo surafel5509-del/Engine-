@@ -11,6 +11,7 @@ object ComponentRegistry {
         "ParticleEmitter" to { ParticleEmitter() },
         "AudioSource" to { AudioSource() },
         "Animator" to { Animator() },
+        "TileMap" to { TileMap() },
         "MeshRenderer" to { MeshRenderer() },
         "Camera3D" to { Camera3D() },
         "Light" to { Light() },
@@ -25,7 +26,7 @@ object ComponentRegistry {
     )
 
     val categories: LinkedHashMap<String, List<String>> = linkedMapOf(
-        "Rendering 2D" to listOf("SpriteRenderer", "TextRenderer", "Animator", "ParticleEmitter", "Camera"),
+        "Rendering 2D" to listOf("SpriteRenderer", "TextRenderer", "Animator", "TileMap", "ParticleEmitter", "Camera"),
         "Rendering 3D" to listOf("MeshRenderer", "Camera3D", "Light"),
         "Physics 2D" to listOf("Rigidbody2D", "Collider2D", "Water"),
         "Physics 3D" to listOf("Rigidbody3D", "Collider3D"),

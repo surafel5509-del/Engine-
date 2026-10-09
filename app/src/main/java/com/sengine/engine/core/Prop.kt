@@ -8,7 +8,8 @@ enum class AssetKind(val extensions: List<String>) {
     ANIMATION(listOf("anim")),
     MODEL(listOf("obj", "smodel")),
     SONG(listOf("song")),
-    DATA(listOf("json", "txt", "csv"));
+    DATA(listOf("json", "txt", "csv")),
+    TILEMAP(listOf("tmap"));
 
     companion object {
         fun of(fileName: String): AssetKind? {
