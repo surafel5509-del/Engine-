@@ -13,7 +13,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class EcsWorld {
 
-    private class Slot(var generation: Int = 0, var alive: Boolean = false, var name: String = "", var mask: Long = 0L, var parent: Entity = Entity.NULL)
+    // generation starts at 1 so (index 0, generation 0) - the null handle - is never a live entity
+    private class Slot(var generation: Int = 1, var alive: Boolean = false, var name: String = "", var mask: Long = 0L, var parent: Entity = Entity.NULL)
 
     private val slots = ArrayList<Slot>()
     private val free = ArrayDeque<Int>()

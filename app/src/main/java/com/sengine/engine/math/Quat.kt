@@ -95,18 +95,21 @@ class Quat(var x: Float = 0f, var y: Float = 0f, var z: Float = 0f, var w: Float
     override fun hashCode(): Int = ((x.toRawBits() * 31 + y.toRawBits()) * 31 + z.toRawBits()) * 31 + w.toRawBits()
     override fun toString(): String = "(%.4f, %.4f, %.4f, %.4f)".format(x, y, z, w)
 
-    /** Yaw/pitch/roll in degrees (matching [Mat4.trs] order Ry*Rx*Rz). */
+    /**
+     * Yaw/pitch/roll in degrees, inverse of [fromEulerDeg] (rotation order Ry * Rx * Rz, matching
+     * [Mat4.trs]). Falls back to yaw-only extraction near gimbal lock.
+     */
     fun toEulerDeg(): FloatArray {
         val m = toMat3()
-        val sy = -m[2]
-        val pitch = kotlin.math.asin(sy.coerceIn(-1f, 1f))
+        val sx = (-m[5]).coerceIn(-1f, 1f)
+        val pitch = kotlin.math.asin(sx)
         val yaw: Float
         val roll: Float
-        if (kotlin.math.abs(sy) < 0.99999f) {
-            yaw = kotlin.math.atan2(m[1], m[0])
-            roll = kotlin.math.atan2(m[5], m[8])
+        if (kotlin.math.abs(m[5]) < 0.99999f) {
+            yaw = kotlin.math.atan2(m[2], m[8])
+            roll = kotlin.math.atan2(m[3], m[4])
         } else {
-            yaw = kotlin.math.atan2(-m[3], m[4])
+            yaw = kotlin.math.atan2(-m[1], m[0])
             roll = 0f
         }
         return floatArrayOf(

@@ -108,8 +108,16 @@ class Bvh3D {
                 node.max.x = max(node.max.x, primMax[t].x); node.max.y = max(node.max.y, primMax[t].y); node.max.z = max(node.max.z, primMax[t].z)
             }
         } else {
+            refitNode(node.left)
+            refitNode(node.right)
+            val l = nodes[node.left]; val r = nodes[node.right]
+            node.min.set(min(l.min.x, r.min.x), min(l.min.y, r.min.y), min(l.min.z, r.min.z))
+            node.max.set(max(l.max.x, r.max.x), max(l.max.y, r.max.y), max(l.max.z, r.max.z))
+        }
+    }
 
     private fun buildNode(lo: Int, hi: Int, useSah: Boolean): Int {
+
         val node = Node()
         val index = nodes.size
         nodes.add(node)
@@ -215,13 +223,6 @@ class Bvh3D {
         return mid
     }
 
-            refitNode(node.left)
-            refitNode(node.right)
-            val l = nodes[node.left]; val r = nodes[node.right]
-            node.min.set(min(l.min.x, r.min.x), min(l.min.y, r.min.y), min(l.min.z, r.min.z))
-            node.max.set(max(l.max.x, r.max.x), max(l.max.y, r.max.y), max(l.max.z, r.max.z))
-        }
-    }
 
     /** Triangle vertex positions. */
     fun triangle(t: Int, a: Vec3, b: Vec3, c: Vec3) {
