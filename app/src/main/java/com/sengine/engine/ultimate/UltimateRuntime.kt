@@ -42,10 +42,10 @@ interface UltimateSubsystem {
  * it from the main loop, so the classic scene graph and the new data oriented subsystems stay in
  * sync without either side knowing about the other.
  */
-class UltimateRuntime(val sceneProvider: () -> Scene) {
+class UltimateRuntime(val sceneProvider: () -> Scene, val jobs: JobSystem = JobSystem.shared) {
 
-    /** Cooperative worker pool shared by physics, animation, AI, rendering and streaming. */
-    val jobs = JobSystem()
+    /** True when this runtime created its own worker pool (and must shut it down). */
+    private val ownsJobs = jobs !== JobSystem.shared
     /** Frame + counter profiler shared by all subsystems. */
     val profiler = Profiler()
     /** Fixed timestep clock (render frame vs simulation step). */
@@ -159,6 +159,6 @@ class UltimateRuntime(val sceneProvider: () -> Scene) {
 
     fun release() {
         stop()
-        jobs.shutdown()
+        if (ownsJobs) jobs.shutdown()
     }
 }

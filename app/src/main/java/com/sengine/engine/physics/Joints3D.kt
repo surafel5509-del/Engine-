@@ -2,7 +2,11 @@ package com.sengine.engine.physics
 
 import com.sengine.engine.math.Quat
 import com.sengine.engine.math.Vec3
-"import kotlin.math.abs\nimport kotlin.math.atan2\nimport kotlin.math.max\nimport kotlin.math.min\nimport kotlin.math.sqrt"
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /*
  * Ultimate physics (v7) — FEATURE layer: joints.
@@ -80,6 +84,17 @@ internal class JointMat3 {
         val id = 1f / det
         out.m[0] = (m[4] * m[8] - m[5] * m[7]) * id
         out.m[1] = (m[2] * m[7] - m[1] * m[8]) * id
+        out.m[2] = (m[1] * m[5] - m[2] * m[4]) * id
+        out.m[3] = (m[5] * m[6] - m[3] * m[8]) * id
+        out.m[4] = (m[0] * m[8] - m[2] * m[6]) * id
+        out.m[5] = (m[2] * m[3] - m[0] * m[5]) * id
+        out.m[6] = (m[3] * m[7] - m[4] * m[6]) * id
+        out.m[7] = (m[1] * m[6] - m[0] * m[7]) * id
+        out.m[8] = (m[0] * m[4] - m[1] * m[3]) * id
+        return true
+    }
+}
+
 
 /**
  * Stateless maths shared by every joint. All functions take explicit scratch/output parameters so
@@ -181,16 +196,6 @@ internal object JointMath3D {
     }
 }
 
-        out.m[2] = (m[1] * m[5] - m[2] * m[4]) * id
-        out.m[3] = (m[5] * m[6] - m[3] * m[8]) * id
-        out.m[4] = (m[0] * m[8] - m[2] * m[6]) * id
-        out.m[5] = (m[2] * m[3] - m[0] * m[5]) * id
-        out.m[6] = (m[3] * m[7] - m[4] * m[6]) * id
-        out.m[7] = (m[1] * m[6] - m[0] * m[7]) * id
-        out.m[8] = (m[0] * m[4] - m[1] * m[3]) * id
-        return true
-    }
-}
 
 /**
  * Creates a static "world frame" body used as the second body of a joint that is anchored to the
@@ -260,7 +265,10 @@ interface JointCoordinate3D {
     val coordinateVelocity: Float
     /** Effective mass of the coordinate row. */
     fun coordinateMass(): Float
-    /** Applies [lambda] through the joint's axis (also feeds the warm-start accumulator). */
+    /**
+     * Applies a coordinate-space impulse: increases [coordinateVelocity] by
+     * `lambda * coordinateMass()` (and feeds the warm-start accumulator).
+     */
     fun applyCoordinateImpulse(lambda: Float)
 }
 
@@ -558,8 +566,8 @@ class HingeJoint3D(
     override fun coordinateMass(): Float = axialMass
 
     override fun applyCoordinateImpulse(lambda: Float) {
-        applyAxial(lambda)
-        angImpulse.addScaled(axis, lambda)
+        applyAxial(-lambda)
+        angImpulse.addScaled(axis, -lambda)
     }
 
     /** Total axial impulse applied this step (motor + limit + external gear coupling). */
@@ -567,5 +575,834 @@ class HingeJoint3D(
 
     override fun describe(): String =
         "Hinge(angle=${"%.4f".format(angle)}, $limits, $motor)"
+}
+
+
+/**
+ * Prismatic (slider) joint: the two bodies may translate along [worldAxis] and nothing else — the
+ * two perpendicular translation axes and all three rotation axes are locked. Supports a travel range
+ * ([JointLimits], measured relative to the rest position) and an axial velocity [JointMotor].
+ *
+ * Pass `bodyB = null` to slide [bodyA] along a world axis.
+ */
+class SliderJoint3D(
+    bodyA: RigidBodyPro3D,
+    bodyB: RigidBodyPro3D?,
+    worldAnchor: Vec3,
+    worldAxis: Vec3,
+    val limits: JointLimits = JointLimits(),
+    val motor: JointMotor = JointMotor(),
+) : ProJoint3D(bodyA, bodyB ?: worldFrameBody(worldAnchor)), JointCoordinate3D {
+
+    override val kind: String = "Slider"
+
+    private val localAnchorA = Vec3()
+    private val localAnchorB = Vec3()
+    private val axisA = Vec3()
+    private val axisB = Vec3()
+    private val refRot: Quat
+
+    private val ra = Vec3(); private val rb = Vec3()
+    private val axis = Vec3(0f, 1f, 0f)
+    private val t1 = Vec3(1f, 0f, 0f); private val t2 = Vec3(0f, 0f, 1f)
+    private val cErr = Vec3(); private val bias = Vec3()
+    private val e = Vec3(); private val angBias = Vec3()
+    private val perpImpulse = Vec3(); private val angImpulse = Vec3()
+    private val rhs = Vec3(); private val lambda = Vec3(); private val tmp = Vec3(); private val tmp2 = Vec3()
+    private val km = JointMat3(); private val ka = JointMat3(); private val scratch = JointMat3()
+
+    private var stepDt = 0f
+    private var mass1 = 1f; private var mass2 = 1f; private var axialMass = 1f
+    private var motorImpulse = 0f; private var limitImpulse = 0f
+    private var motorBias = 0f; private var limitBias = 0f
+    private var limitMode = 0
+    private var restOffset = 0f
+
+    /** Travel along the slide axis relative to the rest position, in metres. */
+    var position = 0f
+        private set
+
+    init {
+        val b = bodyB!!
+        localAnchorA.set(bodyA.rotation.rotateInverse(worldAnchor - bodyA.position))
+        localAnchorB.set(b.rotation.rotateInverse(worldAnchor - b.position))
+        val n = worldAxis.normalizedOr(Vec3.UP)
+        axisA.set(bodyA.rotation.rotateInverse(n))
+        axisB.set(b.rotation.rotateInverse(n))
+        refRot = bodyA.rotation.conjugate().mul(b.rotation).normalize()
+        val d = (b.position + b.rotation.rotate(localAnchorB)) - (bodyA.position + bodyA.rotation.rotate(localAnchorA))
+        restOffset = d.dot(n)
+    }
+
+    /** World-space slide axis (derived from body A). */
+    fun worldAxis(out: Vec3 = Vec3()): Vec3 = out.set(bodyA.rotation.rotate(axisA))
+
+    override fun prepare(dt: Float) {
+        stepDt = dt
+        updateTimestep(dt)
+        if (!enabled || broken) return
+        val b = bodyB!!
+        ra.set(bodyA.rotation.rotate(localAnchorA))
+        rb.set(b.rotation.rotate(localAnchorB))
+        axis.set(bodyA.rotation.rotate(axisA))
+        JointMath3D.perpendicular(axis, t1, t2)
+        cErr.set(bodyA.position + ra).sub(b.position + rb)
+        bias.set(cErr).scale(baumgarte * invDt)
+        mass1 = JointMath3D.linearScalarMass(bodyA, ra, b, rb, t1)
+        mass2 = JointMath3D.linearScalarMass(bodyA, ra, b, rb, t2)
+        axialMass = JointMath3D.linearScalarMass(bodyA, ra, b, rb, axis)
+        if (mass1 < 1e-9f) mass1 = 1e-9f
+        if (mass2 < 1e-9f) mass2 = 1e-9f
+        if (axialMass < 1e-9f) axialMass = 1e-9f
+
+        // locked relative orientation
+        val qErr = bodyA.rotation.mul(refRot).mul(b.rotation.conjugate())
+        angBias.set(JointMath3D.rotVec(qErr)).scale(baumgarte * invDt)
+        JointMath3D.angularMass(bodyA, b, ka)
+
+        // axial coordinate (0 = rest)
+        position = ((b.position + rb) - (bodyA.position + ra)).dot(axis) - restOffset
+
+        motorBias = if (motor.enabled) motor.targetVelocity else 0f
+        limitMode = 0
+        limitBias = 0f
+        if (limits.isLimited) {
+            if (position < limits.lower) {
+                limitMode = -1; limitBias = baumgarte * invDt * (limits.lower - position)
+            } else if (position > limits.upper) {
+                limitMode = 1; limitBias = baumgarte * invDt * (limits.upper - position)
+            }
+        }
+        if (limitMode == 0) limitImpulse = 0f
+
+        JointMath3D.applyPointImpulse(bodyA, perpImpulse, ra)
+        JointMath3D.applyPointImpulse(b, -perpImpulse, rb)
+        JointMath3D.applyAngularImpulse(bodyA, angImpulse)
+        JointMath3D.applyAngularImpulse(b, -angImpulse)
+        if (motor.enabled && motorImpulse != 0f) applyAxial(motorImpulse)
+        if (limitMode != 0 && limitImpulse != 0f) applyAxial(limitImpulse)
+    }
+
+
+    override fun solve(iterations: Int) {
+        if (!enabled || broken) return
+        val b = bodyB!!
+        // 1) lock the two translation axes perpendicular to the slide axis
+        var vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+            (b.linearVelocity + b.angularVelocity.cross(rb))
+        val l1 = -(vrel.dot(t1) + baumgarte * invDt * cErr.dot(t1)) / mass1
+        val l2 = -(vrel.dot(t2) + baumgarte * invDt * cErr.dot(t2)) / mass2
+        tmp.set(t1).scale(l1).addScaled(t2, l2)
+        perpImpulse.add(tmp)
+        JointMath3D.applyPointImpulse(bodyA, tmp, ra)
+        JointMath3D.applyPointImpulse(b, tmp2.set(tmp).scale(-1f), rb)
+        // 2) lock the relative orientation
+        val wrel = bodyA.angularVelocity - b.angularVelocity
+        rhs.set(wrel).add(angBias).scale(-1f)
+        if (JointMath3D.solve(ka, rhs, lambda, scratch)) {
+            angImpulse.add(lambda)
+            JointMath3D.applyAngularImpulse(bodyA, lambda)
+            JointMath3D.applyAngularImpulse(b, tmp2.set(lambda).scale(-1f))
+        }
+        // 3) axial motor (bilateral, force limited)
+        if (motor.enabled) {
+            vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+                (b.linearVelocity + b.angularVelocity.cross(rb))
+            val l = -(vrel.dot(axis) + motorBias) / axialMass
+            val old = motorImpulse
+            val maxImp = if (motor.maxForce > 0f) motor.maxForce * stepDt else Float.MAX_VALUE
+            motorImpulse = (old + l).coerceIn(-maxImp, maxImp)
+            applyAxial(motorImpulse - old)
+        } else {
+            motorImpulse = 0f
+        }
+        // 4) travel limit (unilateral)
+        if (limitMode != 0) {
+            vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+                (b.linearVelocity + b.angularVelocity.cross(rb))
+            val l = -(vrel.dot(axis) + limitBias) / axialMass
+            val old = limitImpulse
+            val next = if (limitMode < 0) min(old + l, 0f) else max(old + l, 0f)
+            limitImpulse = next
+            applyAxial(next - old)
+        }
+        checkBreak(perpImpulse.length(), angImpulse.length() + abs(motorImpulse) + abs(limitImpulse))
+    }
+
+    /** Applies an axial linear impulse pair: `+lambda` on A, `-lambda` on B. */
+    private fun applyAxial(lambda: Float) {
+        if (lambda == 0f) return
+        val p = axis.scale(lambda)
+        JointMath3D.applyPointImpulse(bodyA, p, ra)
+        JointMath3D.applyPointImpulse(bodyB, p.scale(-1f), rb)
+    }
+
+    override val coordinate: Float get() = position
+
+    override val coordinateVelocity: Float
+        get() = ((bodyB!!.linearVelocity + bodyB!!.angularVelocity.cross(rb)) -
+            (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra))).dot(axis)
+
+    override fun coordinateMass(): Float = axialMass
+
+    override fun applyCoordinateImpulse(lambda: Float) {
+        applyAxial(-lambda)
+        perpImpulse.addScaled(axis, -lambda)
+    }
+
+    override fun describe(): String =
+        "Slider(pos=${"%.4f".format(position)}, $limits, $motor)"
+}
+
+/**
+ * Cone-twist joint: a ball socket plus a swing cone limit about the primary axis and a twist limit
+ * about the same axis. Both limits are unilateral (they only push back when exceeded), so the joint
+ * is free inside the cone.
+ *
+ * @param coneAngle maximum swing angle in radians, in `(0, PI/2]`.
+ * @param twistLimits allowed twist range in radians relative to the construction pose.
+ */
+class ConeTwistJoint3D(
+    bodyA: RigidBodyPro3D,
+    bodyB: RigidBodyPro3D?,
+    worldAnchor: Vec3,
+    worldAxis: Vec3,
+    var coneAngle: Float = (Math.PI / 4.0).toFloat(),
+    val twistLimits: JointLimits = JointLimits(),
+) : ProJoint3D(bodyA, bodyB ?: worldFrameBody(worldAnchor)) {
+
+    override val kind: String = "ConeTwist"
+
+    private val localAnchorA = Vec3()
+    private val localAnchorB = Vec3()
+    private val axisA = Vec3()
+    private val axisB = Vec3()
+
+    private val ra = Vec3(); private val rb = Vec3()
+    private val aW = Vec3(0f, 1f, 0f)
+    private val cErr = Vec3(); private val bias = Vec3()
+    private val e = Vec3(); private val dir = Vec3()
+    private val pointImpulse = Vec3()
+    private val swingImpulse = Vec3()
+    private val rhs = Vec3(); private val lambda = Vec3(); private val tmp2 = Vec3()
+    private val km = JointMat3(); private val scratch = JointMat3()
+
+    private var stepDt = 0f
+    private var swingMass = 1f
+    private var swingBias = 0f
+    private var swingActive = false
+    private var swingLambda = 0f
+    private var twistMass = 1f
+    private var twistBias = 0f
+    private var twistMode = 0
+    private var twistImpulse = 0f
+    private var refTwist = 0f
+
+    /** Current swing angle (radians) between the two primary axes. */
+    var swingAngle = 0f
+        private set
+
+    /** Current twist angle (radians) relative to the construction pose. */
+    var twistAngle = 0f
+        private set
+
+    init {
+        val b = bodyB!!
+        localAnchorA.set(bodyA.rotation.rotateInverse(worldAnchor - bodyA.position))
+        localAnchorB.set(b.rotation.rotateInverse(worldAnchor - b.position))
+        val n = worldAxis.normalizedOr(Vec3.UP)
+        axisA.set(bodyA.rotation.rotateInverse(n))
+        axisB.set(b.rotation.rotateInverse(n))
+        val qRel = bodyA.rotation.conjugate().mul(b.rotation).normalize()
+        refTwist = JointMath3D.twistAbout(qRel, axisA)
+    }
+
+    override fun prepare(dt: Float) {
+        stepDt = dt
+        updateTimestep(dt)
+        if (!enabled || broken) return
+        val b = bodyB!!
+        ra.set(bodyA.rotation.rotate(localAnchorA))
+        rb.set(b.rotation.rotate(localAnchorB))
+        JointMath3D.pointMass(bodyA, ra, b, rb, km)
+        cErr.set(bodyA.position + ra).sub(b.position + rb)
+        bias.set(cErr).scale(baumgarte * invDt)
+
+        val aA = bodyA.rotation.rotate(axisA)
+        val aB = b.rotation.rotate(axisB)
+        aW.set(aA)
+        e.crossSet(aA, aB)
+        val eLen = e.length()
+        swingAngle = Math.toDegrees(atan2(eLen.toDouble(), aA.dot(aB).toDouble()).coerceAtLeast(0.0)).toFloat()
+        val limit = (Math.PI / 2.0).toFloat().coerceAtMost(coneAngle).coerceAtLeast(0f)
+        swingActive = eLen > 1e-6f && eLen > kotlin.math.sin(limit)
+        if (swingActive) {
+            dir.set(e).scale(1f / eLen)
+            swingMass = JointMath3D.angularScalarMass(bodyA, b, dir)
+            if (swingMass < 1e-9f) swingMass = 1e-9f
+            swingBias = baumgarte * invDt * (eLen - kotlin.math.sin(limit))
+        } else {
+            swingImpulse.zero()
+            swingLambda = 0f
+        }
+
+        val qRel = bodyA.rotation.conjugate().mul(b.rotation).normalize()
+        twistAngle = JointMath3D.twistAbout(qRel, axisA) - refTwist
+        twistMass = JointMath3D.angularScalarMass(bodyA, b, aW)
+        if (twistMass < 1e-9f) twistMass = 1e-9f
+        twistMode = 0
+        twistBias = 0f
+        if (twistLimits.isLimited) {
+            if (twistAngle < twistLimits.lower) {
+                twistMode = -1; twistBias = baumgarte * invDt * (twistLimits.lower - twistAngle)
+            } else if (twistAngle > twistLimits.upper) {
+                twistMode = 1; twistBias = baumgarte * invDt * (twistLimits.upper - twistAngle)
+            }
+        }
+        if (twistMode == 0) twistImpulse = 0f
+
+        JointMath3D.applyPointImpulse(bodyA, pointImpulse, ra)
+        JointMath3D.applyPointImpulse(b, -pointImpulse, rb)
+        if (swingActive) applySwing(swingImpulse)
+        if (twistMode != 0 && twistImpulse != 0f) applyTwist(twistImpulse)
+    }
+
+    override fun solve(iterations: Int) {
+        if (!enabled || broken) return
+        val b = bodyB!!
+        val vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+            (b.linearVelocity + b.angularVelocity.cross(rb))
+        rhs.set(vrel).add(bias).scale(-1f)
+        if (JointMath3D.solve(km, rhs, lambda, scratch)) {
+            pointImpulse.add(lambda)
+            JointMath3D.applyPointImpulse(bodyA, lambda, ra)
+            JointMath3D.applyPointImpulse(b, -lambda, rb)
+        }
+        if (swingActive) {
+            // Unilateral row: only a negative (corrective) impulse is allowed, so the joint is free
+            // inside the cone.
+            val wrel = bodyA.angularVelocity - b.angularVelocity
+            val l = -(wrel.dot(dir) + swingBias) / swingMass
+            val old = swingLambda
+            val next = min(old + l, 0f)
+            swingLambda = next
+            applySwing(dir.scale(next - old))
+            swingImpulse.set(dir).scale(next)
+        }
+        if (twistMode != 0) {
+            val wrel = bodyA.angularVelocity - b.angularVelocity
+            val l = -(wrel.dot(aW) + twistBias) / twistMass
+            val old = twistImpulse
+            val next = if (twistMode < 0) min(old + l, 0f) else max(old + l, 0f)
+            twistImpulse = next
+            applyTwist(next - old)
+        }
+        checkBreak(pointImpulse.length(), swingImpulse.length() + abs(twistImpulse))
+    }
+
+    /** Applies an angular impulse `lambda * dir` on A and the opposite on B. */
+    private fun applySwing(lambda: Vec3) {
+        if (lambda.lengthSq() == 0f) return
+        JointMath3D.applyAngularImpulse(bodyA, lambda)
+        JointMath3D.applyAngularImpulse(bodyB, tmp2.set(lambda).scale(-1f))
+    }
+
+    /** Applies an angular impulse `lambda * aW` on A and the opposite on B. */
+    private fun applyTwist(lambda: Float) {
+        if (lambda == 0f) return
+        JointMath3D.applyAngularImpulse(bodyA, aW.scale(lambda))
+        JointMath3D.applyAngularImpulse(bodyB, aW.scale(-lambda))
+    }
+
+    override fun describe(): String =
+        "ConeTwist(swing=${"%.3f".format(swingAngle)}° cone=${"%.3f".format(Math.toDegrees(coneAngle.toDouble()))}° " +
+            "twist=${"%.3f".format(twistAngle)}, $twistLimits)"
+}
+
+/**
+ * Distance joint: keeps the two anchor points at [restLength]. When [rope] is true the constraint is
+ * unilateral (it only pulls, never pushes), which is what makes a rope/chain behave.
+ *
+ * Pass `bodyB = null` to tether [bodyA] to a fixed world point.
+ */
+class DistanceJoint3D(
+    bodyA: RigidBodyPro3D,
+    bodyB: RigidBodyPro3D?,
+    worldAnchorA: Vec3,
+    worldAnchorB: Vec3,
+    distance: Float,
+    val rope: Boolean = false,
+) : ProJoint3D(bodyA, bodyB ?: worldFrameBody(worldAnchorB)) {
+
+    override val kind: String = "Distance"
+
+    /** Target distance in metres. */
+    var restLength: Float = distance
+
+    private val localAnchorA = Vec3()
+    private val localAnchorB = Vec3()
+    private val ra = Vec3(); private val rb = Vec3()
+    private val n = Vec3(1f, 0f, 0f)
+    private val impulseVec = Vec3()
+    private val rhs = Vec3(); private val lambda = Vec3()
+    private var impulse = 0f
+    private var mass = 1f
+    private var bias = 0f
+
+    /** Current anchor separation in metres. */
+    var length = 0f
+        private set
+
+    init {
+        val b = bodyB!!
+        localAnchorA.set(bodyA.rotation.rotateInverse(worldAnchorA - bodyA.position))
+        localAnchorB.set(b.rotation.rotateInverse(worldAnchorB - b.position))
+    }
+
+    override fun prepare(dt: Float) {
+        updateTimestep(dt)
+        if (!enabled || broken) return
+        val b = bodyB!!
+        ra.set(bodyA.rotation.rotate(localAnchorA))
+        rb.set(b.rotation.rotate(localAnchorB))
+        val d = (b.position + rb) - (bodyA.position + ra)
+        length = d.length()
+        n.set(d).normalizedOr(Vec3.UP)
+        mass = JointMath3D.linearScalarMass(bodyA, ra, b, rb, n)
+        if (mass < 1e-9f) mass = 1e-9f
+        // J = (vA - vB).n = -d(length)/dt, so the target J is +beta/dt * (length - rest).
+        bias = -baumgarte * invDt * (length - restLength)
+        JointMath3D.applyPointImpulse(bodyA, impulseVec, ra)
+        JointMath3D.applyPointImpulse(b, tmpNeg(impulseVec), rb)
+    }
+
+    override fun solve(iterations: Int) {
+        if (!enabled || broken) return
+        val b = bodyB!!
+        val vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+            (b.linearVelocity + b.angularVelocity.cross(rb))
+        val l = -(vrel.dot(n) + bias) / mass
+        val old = impulse
+        impulse = if (rope) max(old + l, 0f) else old + l
+        val applied = impulse - old
+        if (applied != 0f) {
+            impulseVec.addScaled(n, applied)
+            JointMath3D.applyPointImpulse(bodyA, n.scale(applied), ra)
+            JointMath3D.applyPointImpulse(b, n.scale(-applied), rb)
+        }
+        checkBreak(abs(impulse), 0f)
+    }
+
+    private fun tmpNeg(v: Vec3): Vec3 = Vec3(-v.x, -v.y, -v.z)
+
+    override fun describe(): String =
+        "Distance(len=${"%.4f".format(length)} rest=${"%.4f".format(restLength)}${if (rope) " rope" else ""})"
+}
+
+
+/**
+ * Soft spring-damper distance joint, implemented as a *soft* sequential-impulse constraint
+ * (Catto's soft-constraint formulation): stiffness and damping are given through a natural
+ * [frequencyHz] and a [dampingRatio], which keeps the spring stable at any timestep and any mass
+ * ratio. The bodies settle at [restLength] under a constant load plus the static sag `F/k`.
+ *
+ * Pass `bodyB = null` to hang [bodyA] from a fixed world point.
+ */
+class SpringJoint3D(
+    bodyA: RigidBodyPro3D,
+    bodyB: RigidBodyPro3D?,
+    worldAnchorA: Vec3,
+    worldAnchorB: Vec3,
+    restLength: Float,
+    var frequencyHz: Float = 2f,
+    var dampingRatio: Float = 1f,
+) : ProJoint3D(bodyA, bodyB ?: worldFrameBody(worldAnchorB)) {
+
+    override val kind: String = "Spring"
+
+    /** Target length in metres. */
+    var restLength: Float = restLength
+
+    /** Maximum force in N (0 = unlimited). */
+    var maxForce = 0f
+
+    private val localAnchorA = Vec3()
+    private val localAnchorB = Vec3()
+    private val ra = Vec3(); private val rb = Vec3()
+    private val n = Vec3(1f, 0f, 0f)
+    private val impulseVec = Vec3()
+    private var impulse = 0f
+    private var softMass = 0f
+    private var gamma = 0f
+    private var bias = 0f
+    private var maxImpulse = Float.MAX_VALUE
+
+    /** Current anchor separation in metres. */
+    var length = 0f
+        private set
+
+    /** Current spring force magnitude in N (spring + damping). */
+    var force = 0f
+        private set
+
+    init {
+        val b = bodyB!!
+        localAnchorA.set(bodyA.rotation.rotateInverse(worldAnchorA - bodyA.position))
+        localAnchorB.set(b.rotation.rotateInverse(worldAnchorB - b.position))
+    }
+
+    override fun prepare(dt: Float) {
+        updateTimestep(dt)
+        if (!enabled || broken) return
+        val b = bodyB!!
+        ra.set(bodyA.rotation.rotate(localAnchorA))
+        rb.set(b.rotation.rotate(localAnchorB))
+        val d = (b.position + rb) - (bodyA.position + ra)
+        length = d.length()
+        n.set(d).normalizedOr(Vec3.UP)
+        val k = JointMath3D.linearScalarMass(bodyA, ra, b, rb, n)
+        val mEff = if (k > 1e-9f) 1f / k else 0f
+        val omega = 2f * Math.PI.toFloat() * frequencyHz.coerceAtLeast(0.001f)
+        val springK = mEff * omega * omega
+        val springD = 2f * dampingRatio.coerceAtLeast(0f) * mEff * omega
+        gamma = if (dt > 1e-6f) 1f / (dt * (springD + dt * springK)).coerceAtLeast(1e-9f) else 0f
+        val softBeta = dt * springK * gamma
+        softMass = if (k + gamma > 1e-9f) 1f / (k + gamma) else 0f
+        bias = -softBeta * (length - restLength)
+        force = springK * (length - restLength)
+        maxImpulse = if (maxForce > 0f) maxForce * dt else Float.MAX_VALUE
+        JointMath3D.applyPointImpulse(bodyA, impulseVec, ra)
+        JointMath3D.applyPointImpulse(b, Vec3(-impulseVec.x, -impulseVec.y, -impulseVec.z), rb)
+    }
+
+    override fun solve(iterations: Int) {
+        if (!enabled || broken || softMass <= 0f) return
+        val b = bodyB!!
+        val vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+            (b.linearVelocity + b.angularVelocity.cross(rb))
+        val j = vrel.dot(n)
+        var l = -softMass * (j + bias + gamma * impulse)
+        val old = impulse
+        impulse = (old + l).coerceIn(-maxImpulse, maxImpulse)
+        l = impulse - old
+        if (l != 0f) {
+            impulseVec.addScaled(n, l)
+            JointMath3D.applyPointImpulse(bodyA, n.scale(l), ra)
+            JointMath3D.applyPointImpulse(b, n.scale(-l), rb)
+        }
+        checkBreak(abs(impulse), 0f)
+    }
+
+    override fun describe(): String =
+        "Spring(len=${"%.4f".format(length)} rest=${"%.4f".format(restLength)} f=${frequencyHz}Hz z=$dampingRatio)"
+}
+
+/**
+ * Couples two single-DOF joints (hinge or slider) with a constant [ratio]: `coordA = ratio * coordB`.
+ * Typical use is a gear train between two hinges or a rack-and-pinion between a hinge and a slider.
+ *
+ * The two coupled joints must be solved by the world as well (add all three joints to the world) and
+ * should not run their own motor at the same time.
+ */
+class GearJoint3D(val jointA: Joint3D, val jointB: Joint3D, var ratio: Float = 1f) :
+    ProJoint3D(jointA.bodyA, jointA.bodyB) {
+
+    override val kind: String = "Gear"
+
+    private val coordA: JointCoordinate3D =
+        jointA as? JointCoordinate3D ?: error("GearJoint3D requires a hinge/slider as jointA")
+    private val coordB: JointCoordinate3D =
+        jointB as? JointCoordinate3D ?: error("GearJoint3D requires a hinge/slider as jointB")
+
+    private var impulse = 0f
+    private var mass = 1f
+    private var bias = 0f
+
+    /** Current constraint error `coordA - ratio * coordB`. */
+    var error = 0f
+        private set
+
+    override fun prepare(dt: Float) {
+        updateTimestep(dt)
+        if (!enabled || broken) return
+        error = coordA.coordinate - ratio * coordB.coordinate
+        mass = coordA.coordinateMass() + ratio * ratio * coordB.coordinateMass()
+        if (mass < 1e-9f) mass = 1e-9f
+        bias = baumgarte * invDt * error
+        coordA.applyCoordinateImpulse(impulse)
+        coordB.applyCoordinateImpulse(-ratio * impulse)
+    }
+
+    override fun solve(iterations: Int) {
+        if (!enabled || broken) return
+        val j = coordA.coordinateVelocity - ratio * coordB.coordinateVelocity
+        val l = -(j + bias) / mass
+        impulse += l
+        coordA.applyCoordinateImpulse(l)
+        coordB.applyCoordinateImpulse(-ratio * l)
+        checkBreak(abs(impulse), 0f)
+    }
+
+    override fun describe(): String = "Gear(ratio=$ratio, error=${"%.4f".format(error)})"
+}
+
+
+/**
+ * Wheel joint: a suspension strut. The two bodies may translate along [worldAxis] (suspension
+ * travel, with an optional unilateral travel range) and rotate about [worldAxis] (the wheel spins);
+ * the two perpendicular translation axes and the two perpendicular rotation axes are locked.
+ *
+ * The suspension itself is a soft spring-damper ([frequencyHz]/[dampingRatio]) pulling the travel
+ * back to 0, and [motor] can drive the wheel's rotation.
+ */
+class WheelJoint3D(
+    bodyA: RigidBodyPro3D,
+    bodyB: RigidBodyPro3D?,
+    worldAnchor: Vec3,
+    worldAxis: Vec3,
+    val limits: JointLimits = JointLimits(-0.25f, 0.25f),
+    val motor: JointMotor = JointMotor(),
+    var frequencyHz: Float = 4f,
+    var dampingRatio: Float = 0.7f,
+) : ProJoint3D(bodyA, bodyB ?: worldFrameBody(worldAnchor)), JointCoordinate3D {
+
+    override val kind: String = "Wheel"
+
+    private val localAnchorA = Vec3()
+    private val localAnchorB = Vec3()
+    private val axisA = Vec3()
+    private val axisB = Vec3()
+
+    private val ra = Vec3(); private val rb = Vec3()
+    private val axis = Vec3(0f, 1f, 0f)
+    private val t1 = Vec3(1f, 0f, 0f); private val t2 = Vec3(0f, 0f, 1f)
+    private val cErr = Vec3(); private val bias = Vec3()
+    private val e = Vec3()
+    private val perpImpulse = Vec3(); private val angImpulse = Vec3()
+    private val springImpulse = Vec3()
+    private val rhs = Vec3(); private val lambda = Vec3(); private val tmp2 = Vec3()
+    private val km = JointMat3(); private val scratch = JointMat3()
+
+    private var stepDt = 0f
+    private var mass1 = 1f; private var mass2 = 1f
+    private var alignMass1 = 1f; private var alignMass2 = 1f
+    private var axialMass = 1f; private var angAxialMass = 1f
+    private var springSoftMass = 0f; private var springGamma = 0f; private var springBias = 0f
+    private var springLambda = 0f
+    private var limitImpulse = 0f; private var limitBias = 0f; private var limitMode = 0
+    private var motorImpulse = 0f
+    private var restOffset = 0f
+
+    /** Suspension travel along the axis relative to the rest position, in metres. */
+    var suspension = 0f
+        private set
+
+    /** Relative wheel rotation about the axis, in radians. */
+    var angle = 0f
+        private set
+
+    init {
+        val b = bodyB!!
+        localAnchorA.set(bodyA.rotation.rotateInverse(worldAnchor - bodyA.position))
+        localAnchorB.set(b.rotation.rotateInverse(worldAnchor - b.position))
+        val n = worldAxis.normalizedOr(Vec3.UP)
+        axisA.set(bodyA.rotation.rotateInverse(n))
+        axisB.set(b.rotation.rotateInverse(n))
+        val d = (b.position + b.rotation.rotate(localAnchorB)) - (bodyA.position + bodyA.rotation.rotate(localAnchorA))
+        restOffset = d.dot(n)
+    }
+
+    /** World-space wheel/suspension axis (derived from body A). */
+    fun worldAxis(out: Vec3 = Vec3()): Vec3 = out.set(bodyA.rotation.rotate(axisA))
+
+    override fun prepare(dt: Float) {
+        stepDt = dt
+        updateTimestep(dt)
+        if (!enabled || broken) return
+        val b = bodyB!!
+        ra.set(bodyA.rotation.rotate(localAnchorA))
+        rb.set(b.rotation.rotate(localAnchorB))
+        axis.set(bodyA.rotation.rotate(axisA))
+        JointMath3D.perpendicular(axis, t1, t2)
+        cErr.set(bodyA.position + ra).sub(b.position + rb)
+        bias.set(cErr).scale(baumgarte * invDt)
+        mass1 = JointMath3D.linearScalarMass(bodyA, ra, b, rb, t1).coerceAtLeast(1e-9f)
+        mass2 = JointMath3D.linearScalarMass(bodyA, ra, b, rb, t2).coerceAtLeast(1e-9f)
+        axialMass = JointMath3D.linearScalarMass(bodyA, ra, b, rb, axis).coerceAtLeast(1e-9f)
+        angAxialMass = JointMath3D.angularScalarMass(bodyA, b, axis).coerceAtLeast(1e-9f)
+
+        val aB = b.rotation.rotate(axisB)
+        e.crossSet(axis, aB)
+        alignMass1 = JointMath3D.angularScalarMass(bodyA, b, t1).coerceAtLeast(1e-9f)
+        alignMass2 = JointMath3D.angularScalarMass(bodyA, b, t2).coerceAtLeast(1e-9f)
+
+        suspension = ((b.position + rb) - (bodyA.position + ra)).dot(axis) - restOffset
+        angle -= (bodyA.angularVelocity - b.angularVelocity).dot(axis) * dt
+
+        // soft suspension spring pulling the travel back to 0
+        val mEff = 1f / axialMass
+        val omega = 2f * Math.PI.toFloat() * frequencyHz.coerceAtLeast(0.001f)
+        val springK = mEff * omega * omega
+        val springD = 2f * dampingRatio.coerceAtLeast(0f) * mEff * omega
+        springGamma = if (dt > 1e-6f) 1f / (dt * (springD + dt * springK)).coerceAtLeast(1e-9f) else 0f
+        val softBeta = dt * springK * springGamma
+        springSoftMass = 1f / (axialMass + springGamma)
+        springBias = -softBeta * suspension
+
+        limitMode = 0
+        limitBias = 0f
+        if (limits.isLimited) {
+            if (suspension < limits.lower) {
+                limitMode = -1; limitBias = baumgarte * invDt * (limits.lower - suspension)
+            } else if (suspension > limits.upper) {
+                limitMode = 1; limitBias = baumgarte * invDt * (limits.upper - suspension)
+            }
+        }
+        if (limitMode == 0) limitImpulse = 0f
+
+        JointMath3D.applyPointImpulse(bodyA, perpImpulse, ra)
+        JointMath3D.applyPointImpulse(b, tmp2.set(perpImpulse).scale(-1f), rb)
+        JointMath3D.applyAngularImpulse(bodyA, angImpulse)
+        JointMath3D.applyAngularImpulse(b, tmp2.set(angImpulse).scale(-1f))
+        JointMath3D.applyPointImpulse(bodyA, springImpulse, ra)
+        JointMath3D.applyPointImpulse(b, tmp2.set(springImpulse).scale(-1f), rb)
+        if (limitMode != 0 && limitImpulse != 0f) applyAxial(limitImpulse)
+        if (motor.enabled && motorImpulse != 0f) applyAngularAxial(motorImpulse)
+    }
+
+
+    override fun solve(iterations: Int) {
+        if (!enabled || broken) return
+        val b = bodyB!!
+        // 1) lock the perpendicular translation axes
+        var vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+            (b.linearVelocity + b.angularVelocity.cross(rb))
+        val l1 = -(vrel.dot(t1) + baumgarte * invDt * cErr.dot(t1)) / mass1
+        val l2 = -(vrel.dot(t2) + baumgarte * invDt * cErr.dot(t2)) / mass2
+        val p = Vec3().set(t1).scale(l1).addScaled(t2, l2)
+        perpImpulse.add(p)
+        JointMath3D.applyPointImpulse(bodyA, p, ra)
+        JointMath3D.applyPointImpulse(b, tmp2.set(p).scale(-1f), rb)
+        // 2) keep the two axes aligned
+        val wrel = bodyA.angularVelocity - b.angularVelocity
+        val a1 = -(wrel.dot(t1) + baumgarte * invDt * e.dot(t1)) / alignMass1
+        val a2 = -(wrel.dot(t2) + baumgarte * invDt * e.dot(t2)) / alignMass2
+        val pa = Vec3().set(t1).scale(a1).addScaled(t2, a2)
+        angImpulse.add(pa)
+        JointMath3D.applyAngularImpulse(bodyA, pa)
+        JointMath3D.applyAngularImpulse(b, tmp2.set(pa).scale(-1f))
+        // 3) soft suspension spring along the axis
+        vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+            (b.linearVelocity + b.angularVelocity.cross(rb))
+        val j = vrel.dot(axis)
+        val old = springLambda
+        springLambda = old - springSoftMass * (j + springBias + springGamma * old)
+        val sl = springLambda - old
+        if (sl != 0f) {
+            springImpulse.addScaled(axis, sl)
+            applyAxial(sl)
+        }
+        // 4) hard travel limits (unilateral)
+        if (limitMode != 0) {
+            vrel = (bodyA.linearVelocity + bodyA.angularVelocity.cross(ra)) -
+                (b.linearVelocity + b.angularVelocity.cross(rb))
+            val l = -(vrel.dot(axis) + limitBias) / axialMass
+            val prev = limitImpulse
+            val next = if (limitMode < 0) min(prev + l, 0f) else max(prev + l, 0f)
+            limitImpulse = next
+            applyAxial(next - prev)
+        }
+        // 5) wheel motor about the axis (bilateral, force limited)
+        if (motor.enabled) {
+            val w = (bodyA.angularVelocity - b.angularVelocity).dot(axis)
+            val l = -(w + motor.targetVelocity) / angAxialMass
+            val prev = motorImpulse
+            val maxImp = if (motor.maxForce > 0f) motor.maxForce * stepDt else Float.MAX_VALUE
+            motorImpulse = (prev + l).coerceIn(-maxImp, maxImp)
+            applyAngularAxial(motorImpulse - prev)
+        } else {
+            motorImpulse = 0f
+        }
+        checkBreak(
+            perpImpulse.length() + abs(springLambda),
+            angImpulse.length() + abs(motorImpulse) + abs(limitImpulse)
+        )
+    }
+
+    /** Applies an axial linear impulse pair: `+lambda` on A, `-lambda` on B. */
+    private fun applyAxial(lambda: Float) {
+        if (lambda == 0f) return
+        JointMath3D.applyPointImpulse(bodyA, axis.scale(lambda), ra)
+        JointMath3D.applyPointImpulse(bodyB, axis.scale(-lambda), rb)
+    }
+
+    /** Applies an axial angular impulse pair: `+lambda` on A, `-lambda` on B. */
+    private fun applyAngularAxial(lambda: Float) {
+        if (lambda == 0f) return
+        JointMath3D.applyAngularImpulse(bodyA, axis.scale(lambda))
+        JointMath3D.applyAngularImpulse(bodyB, axis.scale(-lambda))
+    }
+
+    override val coordinate: Float get() = angle
+
+    override val coordinateVelocity: Float
+        get() = -(bodyA.angularVelocity - bodyB!!.angularVelocity).dot(axis)
+
+    override fun coordinateMass(): Float = angAxialMass
+
+    override fun applyCoordinateImpulse(lambda: Float) {
+        applyAngularAxial(-lambda)
+        angImpulse.addScaled(axis, -lambda)
+    }
+
+    override fun describe(): String =
+        "Wheel(travel=${"%.4f".format(suspension)}, angle=${"%.3f".format(angle)}, $limits, $motor)"
+}
+
+/**
+ * Wraps any [Joint3D] and disables it once the accumulated impulse exceeds [breakForce] /
+ * [breakTorque] (inherited from [Joint3D]). The wrapper must be the joint registered in the world.
+ */
+class BreakableJoint3D(val inner: Joint3D) : Joint3D(inner.bodyA, inner.bodyB) {
+
+    override val kind: String = "Breakable(${inner.kind})"
+
+    /** Invoked once with the wrapper when the joint snaps. */
+    var onBreak: ((BreakableJoint3D) -> Unit)? = null
+
+    init {
+        breakForce = inner.breakForce
+        breakTorque = inner.breakTorque
+    }
+
+    /** The joint this wrapper breaks (delegated). */
+    fun target(): Joint3D = inner
+
+    override fun prepare(dt: Float) {
+        if (!enabled || broken) return
+        inner.prepare(dt)
+    }
+
+    override fun solve(iterations: Int) {
+        if (broken || !enabled) return
+        inner.solve(iterations)
+        val torque = (inner as? ProJoint3D)?.accumulatedTorqueImpulse ?: 0f
+        if (breakForce < Float.MAX_VALUE && inner.accumulatedImpulse > breakForce) snap()
+        else if (breakTorque < Float.MAX_VALUE && torque > breakTorque) snap()
+        accumulatedImpulse = inner.accumulatedImpulse
+    }
+
+    private fun snap() {
+        if (broken) return
+        broken = true
+        inner.broken = true
+        inner.enabled = false
+        enabled = false
+        onBreak?.invoke(this)
+    }
+
+    override fun wakeBodies() = inner.wakeBodies()
+
+    override fun describe(): String = "Breakable(${inner.describe()})"
 }
 

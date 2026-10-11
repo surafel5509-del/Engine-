@@ -163,6 +163,12 @@ class JobSystem(val threadCount: Int = defaultThreadCount()) {
     fun stats(): String = "JobSystem(threads=$threadCount, executed=${executed.get()}, cooperative=${stolen.get()})"
 
     companion object {
+        /**
+         * Process-wide worker pool. Games run one simulation, so a single pool avoids
+         * oversubscribing the device (and the unit tests that create many Engine instances).
+         */
+        val shared: JobSystem by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { JobSystem() }
+
         fun defaultThreadCount(): Int {
             val cores = Runtime.getRuntime().availableProcessors()
             // Keep two cores free for the render thread + OS on mobile devices.

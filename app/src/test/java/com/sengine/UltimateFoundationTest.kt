@@ -31,8 +31,9 @@ class UltimateFoundationTest {
         assertTrue("mat round trip", back.dot(q) > 0.999f)
         val s = Quat.slerp(Quat.identity(), Quat.fromAxisAngle(0f, 1f, 0f, Math.PI.toFloat()), 0.5f)
         assertEquals(90f, s.toEulerDeg()[0], 0.5f)
+        // right-hand rule: rotating +X by +90 degrees around +Y gives -Z
         val r = Vec3(1f, 0f, 0f).rotateAxis(Vec3.UP, Math.PI.toFloat() / 2f)
-        assertEquals(0f, r.z, 1e-4f); assertEquals(-1f, r.x, 1e-4f)
+        assertEquals(-1f, r.z, 1e-4f); assertEquals(0f, r.x, 1e-4f)
         assertEquals(90f, Vec3.toYaw(Vec3(1f, 0f, 0f)), 0.5f)
         assertEquals(45f, Vec3(1f, -1f, 0f).angleTo(Vec3(1f, 0f, 0f)), 0.5f)
         val a = Aabb3.fromCenterExtents(Vec3(0f, 0f, 0f), Vec3(1f, 1f, 1f))
@@ -104,9 +105,10 @@ class UltimateFoundationTest {
         assertEquals(3f, world.get(e, TransformEcs::class.java)!!.position.x, 1e-4f)
         val json = world.toJson()
         val restored = EcsWorld()
-        val bridge2 = SceneEcsBridge(restored)
+        SceneEcsBridge(restored)
         restored.fromJson(json)
-        assertEquals(2, restored.entityCount)
+        assertEquals("every entity survives serialisation", world.entityCount, restored.entityCount)
+        assertEquals(3, restored.query(TransformEcs::class.java).size)
         println("SIM foundation ecs ${world.stats()} bridge=${bridge.describe()}")
     }
 

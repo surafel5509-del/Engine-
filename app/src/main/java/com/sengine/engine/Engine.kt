@@ -41,6 +41,8 @@ class Engine(val project: Project, initialScene: Scene) {
     val input = Input()
     val physics = PhysicsWorld()
     val physics3D = com.sengine.engine.physics.PhysicsWorld3D()
+    /** Ultimate Edition runtime: jobs, ECS, fixed-step clock, profiler and the v7 subsystems. */
+    val ultimate = com.sengine.engine.ultimate.UltimateRuntime({ scene })
     val animation = com.sengine.engine.anim.AnimationSystem(project)
     val scripts = ScriptSystem(this)
     val audio = AudioSystem(project)
@@ -62,6 +64,8 @@ class Engine(val project: Project, initialScene: Scene) {
     @Volatile var scriptMs = 0f
     @Volatile var physicsMs = 0f
     @Volatile var renderMs = 0f
+    /** Milliseconds spent in the v7 subsystem runtime this frame. */
+    @Volatile var ultimateMs = 0f
     @Volatile var drawCalls = 0
     private var fpsAcc = 0f
     private var fpsFrames = 0
@@ -77,6 +81,12 @@ class Engine(val project: Project, initialScene: Scene) {
     init {
         physics.listener = scripts
         physics3D.listener = scripts
+        current = this
+    }
+
+    companion object {
+        /** The runtime most recently created in this process (editor hub, diagnostics, tooling). */
+        @Volatile @JvmStatic var current: Engine? = null
     }
 
     // ---------------------------------------------------------------- commands
@@ -142,10 +152,14 @@ class Engine(val project: Project, initialScene: Scene) {
             if (!go.isActiveInHierarchy()) continue
             go.get<AudioSource>()?.let { if (it.playOnStart) audio.play(it.clip, it.volume, it.loop) }
         }
+        ultimate.time.timeScale = 1f
+        ultimate.ecsMirroring = scene.objects.size <= 512
+        ultimate.start()
         scripts.begin()
     }
 
     private fun endScene() {
+        ultimate.stop()
         scripts.end()
         audio.stop()
     }
@@ -205,6 +219,13 @@ class Engine(val project: Project, initialScene: Scene) {
         updateModelAnims(dt)
         prepareVoxels(false)
         decayShake(dt)
+        // Ultimate Edition subsystems (pro physics, AI, animation graph, VFX, netcode, ...)
+        if (ultimate.count() > 0) {
+            val u0 = System.nanoTime()
+            ultimate.time.timeScale = timeScale.coerceIn(0f, 10f)
+            ultimate.advance(raw)
+            ultimateMs = ultimateMs * 0.9f + (System.nanoTime() - u0) / 1e6f * 0.1f
+        }
 
         val load = pendingSceneLoad
         if (load != null) {
@@ -365,6 +386,8 @@ class Engine(val project: Project, initialScene: Scene) {
         synchronized(lock) {
             if (mode != Mode.EDIT) endScene()
             audio.stop()
+            ultimate.release()
+            if (current === this) current = null
         }
     }
 }
