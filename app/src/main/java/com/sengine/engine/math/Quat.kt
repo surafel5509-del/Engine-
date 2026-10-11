@@ -187,7 +187,10 @@ class Quat(var x: Float = 0f, var y: Float = 0f, var z: Float = 0f, var w: Float
         fun slerp(a: Quat, b: Quat, t: Float): Quat {
             var cosTheta = a.dot(b)
             var bx = b.x; var by = b.y; var bz = b.z; var bw = b.w
-            if (cosTheta < 0f) { cosTheta = -cosTheta; bx = -bx; by = -by; bz = -bz; bw = -bw }
+            // Only flip hemispheres for a clearly negative dot: a dot within 1e-6 of zero means the
+            // quaternions are orthogonal (a 180 degree rotation apart) where flipping would make the
+            // interpolation take the negative path and produce a jittering sign near that case.
+            if (cosTheta < -1e-6f) { cosTheta = -cosTheta; bx = -bx; by = -by; bz = -bz; bw = -bw }
             if (cosTheta > 0.9995f) {
                 return Quat(
                     a.x + (bx - a.x) * t, a.y + (by - a.y) * t,

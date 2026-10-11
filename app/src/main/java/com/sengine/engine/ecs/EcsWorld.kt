@@ -41,11 +41,9 @@ class EcsWorld {
 
     fun create(name: String = "Entity", parent: Entity = Entity.NULL): Entity {
         val index: Int
-        if (free.isNotEmpty()) { index = free.removeFirst(); slots[index].alive = true } else {
-            index = slots.size
-            slots.add(Slot())
-        }
+        if (free.isNotEmpty()) index = free.removeFirst() else { index = slots.size; slots.add(Slot()) }
         val slot = slots[index]
+        slot.alive = true
         slot.mask = 0L
         slot.name = name
         slot.parent = parent
