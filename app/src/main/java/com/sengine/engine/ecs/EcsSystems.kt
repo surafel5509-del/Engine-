@@ -67,8 +67,6 @@ class SystemScheduler(private val world: EcsWorld) {
         return this
     }
 
-    inline fun <reified T : EcsSystem> add(system: T, stage: Stage = Stage.UPDATE) = add(system as EcsSystem, stage)
-
     fun remove(system: EcsSystem) {
         for (list in stages.values) if (list.remove(system)) system.onRemoved(world)
     }
