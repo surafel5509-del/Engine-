@@ -148,7 +148,6 @@ class Narrowphase3D {
             else -> closestOnTetra()
         }
     }
-}
 
     private fun closestOnSegment() {
         val a = simplexW[0]; val b = simplexW[1]
@@ -391,8 +390,12 @@ class Narrowphase3D {
         if (ka == ShapeKind.PLANE && kb == ShapeKind.PLANE) return false
         if (ka == ShapeKind.PLANE) return planeVsShape(shapeA as PlaneShape3D, posA, rotA, shapeB, posB, rotB, out, planeIsA = true)
         if (kb == ShapeKind.PLANE) return planeVsShape(shapeB as PlaneShape3D, posB, rotB, shapeA, posA, rotA, out, planeIsA = false)
-        if (ka == ShapeKind.TRIANGLE_MESH || ka == ShapeKind.HEIGHTFIELD) return meshVsShape(shapeA, posA, rotA, shapeB, posB, rotB, out, meshIsA = true)
-        if (kb == ShapeKind.TRIANGLE_MESH || kb == ShapeKind.HEIGHTFIELD) return meshVsShape(shapeB, posB, rotB, shapeA, posA, rotA, out, meshIsA = false)
+        val aMesh = ka == ShapeKind.TRIANGLE_MESH || ka == ShapeKind.HEIGHTFIELD
+        val bMesh = kb == ShapeKind.TRIANGLE_MESH || kb == ShapeKind.HEIGHTFIELD
+        if (aMesh && bMesh) return meshMesh(shapeA, posA, rotA, shapeB, posB, rotB, out)
+        if (aMesh) return meshVsShape(shapeA, posA, rotA, shapeB, posB, rotB, out, meshIsA = true)
+        if (bMesh) return meshVsShape(shapeB, posB, rotB, shapeA, posA, rotA, out, meshIsA = false)
+
         if (ka == ShapeKind.SPHERE && kb == ShapeKind.SPHERE) return sphereSphere(posA, shapeA as SphereShape3D, posB, shapeB as SphereShape3D, out)
         if (ka == ShapeKind.SPHERE && kb == ShapeKind.CAPSULE) return sphereCapsule(posA, shapeA as SphereShape3D, posB, rotB, shapeB as CapsuleShape3D, out, sphereIsA = true)
         if (ka == ShapeKind.CAPSULE && kb == ShapeKind.SPHERE) return sphereCapsule(posB, shapeB as SphereShape3D, posA, rotA, shapeA as CapsuleShape3D, out, sphereIsA = false)
@@ -672,4 +675,276 @@ class Narrowphase3D {
         clipBoxFace(quad, refAxes, refIndex, refHalf, refFaceCenter, refNormal, refPlaneOffset, n, boxB, cB, rotB, bestPen, out)
         return true
     }
+
+
+    private fun clipBoxFace(
+        quad: MutableList<Vec3>, refAxes: Array<Vec3>, refIndex: Int, refHalf: FloatArray,
+        refFaceCenter: Vec3, refNormal: Vec3, refPlaneOffset: Float,
+        n: Vec3, boxB: BoxShape3D, cB: Vec3, rotB: Quat, bestPen: Float, out: Manifold3D
+    ) {
+        val t0 = refAxes[(refIndex + 1) % 3]; val t1 = refAxes[(refIndex + 2) % 3]
+        val ht0 = refHalf[(refIndex + 1) % 3]; val ht1 = refHalf[(refIndex + 2) % 3]
+        clipHalfSpace(quad, t0, t0.dot(refFaceCenter) + ht0)
+        clipHalfSpace(quad, Vec3(-t0.x, -t0.y, -t0.z), -t0.dot(refFaceCenter) + ht0)
+        clipHalfSpace(quad, t1, t1.dot(refFaceCenter) + ht1)
+        clipHalfSpace(quad, Vec3(-t1.x, -t1.y, -t1.z), -t1.dot(refFaceCenter) + ht1)
+
+        var any = false
+        for (v in quad) {
+            val sep = refNormal.dot(v) - refPlaneOffset
+            val depth = -sep
+            if (depth > -1e-4f) {
+                val p = Vec3(v.x - refNormal.x * sep, v.y - refNormal.y * sep, v.z - refNormal.z * sep)
+                addPoint(out, p, n, max(1e-5f, depth), featureIdFromPoint(shapeLocal(boxB, cB, rotB, p)))
+                any = true
+                if (out.points.size >= 4) break
+            }
+        }
+        if (!any) {
+            val p = Vec3(refFaceCenter.x, refFaceCenter.y, refFaceCenter.z)
+            addPoint(out, p, n, bestPen, featureIdFromPoint(shapeLocal(boxB, cB, rotB, p)))
+        }
+    }
+
+    /** Sutherland–Hodgman clip of [poly] against the half-space `dot(n, p) <= offset`. */
+    private fun clipHalfSpace(poly: MutableList<Vec3>, n: Vec3, offset: Float) {
+        if (poly.isEmpty()) return
+        val res = ArrayList<Vec3>(poly.size + 2)
+        val size = poly.size
+        for (i in 0 until size) {
+            val cur = poly[i]; val nxt = poly[(i + 1) % size]
+            val dc = n.dot(cur) - offset; val dn = n.dot(nxt) - offset
+            if (dc <= 0f) res.add(cur)
+            if ((dc < 0f && dn > 0f) || (dc > 0f && dn < 0f)) {
+                val t = dc / (dc - dn)
+                res.add(Vec3(cur.x + (nxt.x - cur.x) * t, cur.y + (nxt.y - cur.y) * t, cur.z + (nxt.z - cur.z) * t))
+            }
+        }
+        poly.clear(); poly.addAll(res)
+    }
+
+    // ------------------------------------------------------------------ convex / convex (GJK + EPA)
+
+    private fun convexConvex(
+        shapeA: Shape3D, posA: Vec3, rotA: Quat,
+        shapeB: Shape3D, posB: Vec3, rotB: Quat, out: Manifold3D
+    ): Boolean {
+        val g = GjkResult()
+        if (!gjk(shapeA, posA, rotA, shapeB, posB, rotB, g)) return false
+        val e = EpaResult()
+        if (!epa(shapeA, posA, rotA, shapeB, posB, rotB, e)) return false
+        if (e.depth <= 0f) return false
+        val p = Vec3((e.pointA.x + e.pointB.x) * 0.5f, (e.pointA.y + e.pointB.y) * 0.5f, (e.pointA.z + e.pointB.z) * 0.5f)
+        addPoint(out, p, e.normal, e.depth, featureIdFromPoint(shapeLocal(shapeB, posB, rotB, p)))
+        return true
+    }
+
+
+    // ------------------------------------------------------------------ mesh collisions (BVH + triangles)
+
+    /** Minimal convex shape wrapping a triangle for the GJK/EPA path. */
+    private class PointCloudShape(private val pts: Array<Vec3>) : Shape3D {
+        override val kind: ShapeKind get() = ShapeKind.CONVEX_HULL
+        override fun localAabb(): Aabb3 = Aabb3.fromPoints(pts.toList())
+        override fun supportLocal(dir: Vec3, out: Vec3): Vec3 {
+            var best = -Float.MAX_VALUE; var bi = 0
+            for (i in pts.indices) { val d = pts[i].dot(dir); if (d > best) { best = d; bi = i } }
+            return out.set(pts[bi])
+        }
+        override fun volume(): Float = 0f
+        override fun localInertia(mass: Float, out: Vec3): Vec3 = out.set(0f, 0f, 0f)
+        override fun boundingRadius(): Float { var r = 0f; for (p in pts) r = max(r, p.length()); return r }
+    }
+
+    private fun meshBvh(shape: Shape3D): Bvh3D? = when (shape) {
+        is TriangleMeshShape3D -> shape.bvh
+        is HeightfieldShape3D -> shape.bvh
+        else -> null
+    }
+
+    private fun worldAabbOf(shape: Shape3D, pos: Vec3, rot: Quat, out: Aabb3): Aabb3 {
+        val la = shape.localAabb()
+        out.reset()
+        for (i in 0 until 8) {
+            val lx = if (i and 1 == 0) la.min.x else la.max.x
+            val ly = if (i and 2 == 0) la.min.y else la.max.y
+            val lz = if (i and 4 == 0) la.min.z else la.max.z
+            val r = rot.rotate(Vec3(lx, ly, lz))
+            out.expand(pos.x + r.x, pos.y + r.y, pos.z + r.z)
+        }
+        return out
+    }
+
+    private val triA = Vec3(); private val triB = Vec3(); private val triC = Vec3()
+    private val triQ = Vec3(); private val triR = Vec3(); private val triS = Vec3()
+
+    private fun meshVsShape(
+        meshShape: Shape3D, meshPos: Vec3, meshRot: Quat,
+        shape: Shape3D, pos: Vec3, rot: Quat, out: Manifold3D, meshIsA: Boolean
+    ): Boolean {
+        val bvh = meshBvh(meshShape) ?: return false
+        val wa = worldAabbOf(shape, pos, rot, Aabb3())
+        val la = Aabb3()
+        for (i in 0 until 8) {
+            val wx = if (i and 1 == 0) wa.min.x else wa.max.x
+            val wy = if (i and 2 == 0) wa.min.y else wa.max.y
+            val wz = if (i and 4 == 0) wa.min.z else wa.max.z
+            la.expand(meshRot.rotateInverse(Vec3(wx - meshPos.x, wy - meshPos.y, wz - meshPos.z)))
+        }
+        val candidates = ArrayList<Int>()
+        bvh.queryAabb(la, candidates)
+        candidates.sort()
+        var touched = false
+        for (t in candidates) {
+            bvh.triangle(t, triA, triB, triC)
+            worldTri(meshPos, meshRot, triA, triB, triC, triQ, triR, triS)
+            if (shapeVsTriangle(shape, pos, rot, triQ, triR, triS, t, out, meshIsA)) touched = true
+            if (out.points.size >= 4) break
+        }
+        return touched
+    }
+
+    private fun worldTri(meshPos: Vec3, meshRot: Quat, a: Vec3, b: Vec3, c: Vec3, oa: Vec3, ob: Vec3, oc: Vec3) {
+        val ra = meshRot.rotate(a); oa.set(meshPos.x + ra.x, meshPos.y + ra.y, meshPos.z + ra.z)
+        val rb = meshRot.rotate(b); ob.set(meshPos.x + rb.x, meshPos.y + rb.y, meshPos.z + rb.z)
+        val rc = meshRot.rotate(c); oc.set(meshPos.x + rc.x, meshPos.y + rc.y, meshPos.z + rc.z)
+    }
+
+
+    /** Contact between a convex shape and one world-space triangle. */
+    private fun shapeVsTriangle(shape: Shape3D, pos: Vec3, rot: Quat, a: Vec3, b: Vec3, c: Vec3, tri: Int, out: Manifold3D, meshIsA: Boolean): Boolean {
+        val sign = if (meshIsA) 1f else -1f
+        // EPA normal points shape -> triangle, so flip when the mesh is body A
+        val signConv = if (meshIsA) -1f else 1f
+        when (shape.kind) {
+            ShapeKind.SPHERE -> {
+                val s = shape as SphereShape3D
+                Bvh3D.closestPointTriangle(pos, a, b, c, tmp1)
+                val dx = pos.x - tmp1.x; val dy = pos.y - tmp1.y; val dz = pos.z - tmp1.z
+                val dist = sqrt(dx * dx + dy * dy + dz * dz)
+                if (dist > s.radius) return false
+                val depth = s.radius - dist
+                val n = if (dist > 1e-6f) Vec3(dx / dist, dy / dist, dz / dist) else triangleNormal(a, b, c)
+                val p = Vec3(pos.x - n.x * s.radius, pos.y - n.y * s.radius, pos.z - n.z * s.radius)
+                addPoint(out, p, Vec3(n.x * sign, n.y * sign, n.z * sign), depth, tri + 1)
+                return true
+            }
+            ShapeKind.CAPSULE -> {
+                val s = shape as CapsuleShape3D
+                val e0 = capEnd(pos, rot, -s.halfHeight); val e1 = capEnd(pos, rot, s.halfHeight)
+                val mid = Vec3((e0.x + e1.x) * 0.5f, (e0.y + e1.y) * 0.5f, (e0.z + e1.z) * 0.5f)
+                Bvh3D.closestPointTriangle(mid, a, b, c, tmp1)
+                val q = closestPointOnSegment(tmp1, e0, e1, tmp2)
+                val dx = q.x - tmp1.x; val dy = q.y - tmp1.y; val dz = q.z - tmp1.z
+                val dist = sqrt(dx * dx + dy * dy + dz * dz)
+                if (dist > s.radius) return false
+                val depth = s.radius - dist
+                val n = if (dist > 1e-6f) Vec3(dx / dist, dy / dist, dz / dist) else triangleNormal(a, b, c)
+                val p = Vec3(q.x - n.x * s.radius, q.y - n.y * s.radius, q.z - n.z * s.radius)
+                addPoint(out, p, Vec3(n.x * sign, n.y * sign, n.z * sign), depth, tri + 1)
+                return true
+            }
+            else -> {
+                val triShape = PointCloudShape(arrayOf(a.copy(), b.copy(), c.copy()))
+                val g = GjkResult()
+                if (!gjk(shape, pos, rot, triShape, Vec3.ZERO, Quat(), g)) return false
+                val e = EpaResult()
+                if (!epa(shape, pos, rot, triShape, Vec3.ZERO, Quat(), e)) return false
+                if (e.depth <= 0f) return false
+                val p = Vec3((e.pointA.x + e.pointB.x) * 0.5f, (e.pointA.y + e.pointB.y) * 0.5f, (e.pointA.z + e.pointB.z) * 0.5f)
+                addPoint(out, p, Vec3(e.normal.x * signConv, e.normal.y * signConv, e.normal.z * signConv), e.depth, tri + 1)
+                return true
+            }
+        }
+    }
+
+    private fun triangleNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 = (b - a).cross(c - a).normalizedOr(Vec3.UP)
+
+
+    // ------------------------------------------------------------------ mesh / mesh (triangle SAT)
+
+    private fun meshMesh(
+        shapeA: Shape3D, posA: Vec3, rotA: Quat, shapeB: Shape3D, posB: Vec3, rotB: Quat, out: Manifold3D
+    ): Boolean {
+        val bvhA = meshBvh(shapeA) ?: return false
+        val bvhB = meshBvh(shapeB) ?: return false
+        val wa = worldAabbOf(shapeA, posA, rotA, Aabb3())
+        val la = Aabb3()
+        for (i in 0 until 8) {
+            val wx = if (i and 1 == 0) wa.min.x else wa.max.x
+            val wy = if (i and 2 == 0) wa.min.y else wa.max.y
+            val wz = if (i and 4 == 0) wa.min.z else wa.max.z
+            la.expand(rotB.rotateInverse(Vec3(wx - posB.x, wy - posB.y, wz - posB.z)))
+        }
+        val candB = ArrayList<Int>()
+        bvhB.queryAabb(la, candB)
+        candB.sort()
+        if (candB.isEmpty()) return false
+        val a0 = Vec3(); val a1 = Vec3(); val a2 = Vec3()
+        val b0 = Vec3(); val b1 = Vec3(); val b2 = Vec3()
+        val ta = Aabb3()
+        var touched = false
+        val candA = ArrayList<Int>()
+        for (tb in candB) {
+            bvhB.triangle(tb, b0, b1, b2)
+            worldTri(posB, rotB, b0, b1, b2, triQ, triR, triS)
+            ta.reset(); ta.expand(triQ); ta.expand(triR); ta.expand(triS)
+            val laA = Aabb3()
+            for (i in 0 until 8) {
+                val wx = if (i and 1 == 0) ta.min.x else ta.max.x
+                val wy = if (i and 2 == 0) ta.min.y else ta.max.y
+                val wz = if (i and 4 == 0) ta.min.z else ta.max.z
+                laA.expand(rotA.rotateInverse(Vec3(wx - posA.x, wy - posA.y, wz - posA.z)))
+            }
+            candA.clear()
+            bvhA.queryAabb(laA, candA)
+            candA.sort()
+            for (tai in candA) {
+                bvhA.triangle(tai, a0, a1, a2)
+                worldTri(posA, rotA, a0, a1, a2, triA, triB, triC)
+                if (triTriContact(triA, triB, triC, triQ, triR, triS, out, tai)) touched = true
+                if (out.points.size >= 4) return true
+            }
+        }
+        return touched
+    }
+
+    /** Triangle/triangle SAT: tests both face normals and the 9 edge cross products. */
+    private fun triTriContact(a0: Vec3, a1: Vec3, a2: Vec3, b0: Vec3, b1: Vec3, b2: Vec3, out: Manifold3D, tri: Int): Boolean {
+        val axes = ArrayList<Vec3>(12)
+        val na = (a1 - a0).cross(a2 - a0)
+        val nb = (b1 - b0).cross(b2 - b0)
+        if (na.lengthSq() > 1e-12f) axes.add(na.normalized())
+        if (nb.lengthSq() > 1e-12f) axes.add(nb.normalized())
+        val ea = arrayOf(a1 - a0, a2 - a1, a0 - a2)
+        val eb = arrayOf(b1 - b0, b2 - b1, b0 - b2)
+        for (i in 0 until 3) for (j in 0 until 3) {
+            val x = ea[i].cross(eb[j])
+            if (x.lengthSq() > 1e-12f) axes.add(x.normalized())
+        }
+        val ca = Vec3((a0.x + a1.x + a2.x) / 3f, (a0.y + a1.y + a2.y) / 3f, (a0.z + a1.z + a2.z) / 3f)
+        val cb = Vec3((b0.x + b1.x + b2.x) / 3f, (b0.y + b1.y + b2.y) / 3f, (b0.z + b1.z + b2.z) / 3f)
+        val dir = Vec3(cb.x - ca.x, cb.y - ca.y, cb.z - ca.z)
+        var bestOverlap = Float.MAX_VALUE
+        val bestAxis = Vec3(0f, 1f, 0f)
+        for (axis in axes) {
+            val pa = projectTri(a0, a1, a2, axis)
+            val pb = projectTri(b0, b1, b2, axis)
+            val overlap = min(pa[1], pb[1]) - max(pa[0], pb[0])
+            if (overlap <= 0f) return false
+            if (overlap < bestOverlap) {
+                bestOverlap = overlap
+                bestAxis.set(if (dir.dot(axis) >= 0f) axis else Vec3(-axis.x, -axis.y, -axis.z))
+            }
+        }
+        val p = Vec3((ca.x + cb.x) * 0.5f, (ca.y + cb.y) * 0.5f, (ca.z + cb.z) * 0.5f)
+        addPoint(out, p, bestAxis, bestOverlap, tri + 1)
+        return true
+    }
+
+    private fun projectTri(a: Vec3, b: Vec3, c: Vec3, axis: Vec3): FloatArray {
+        val da = a.dot(axis); val db = b.dot(axis); val dc = c.dot(axis)
+        return floatArrayOf(min(da, min(db, dc)), max(da, max(db, dc)))
+    }
+}
 

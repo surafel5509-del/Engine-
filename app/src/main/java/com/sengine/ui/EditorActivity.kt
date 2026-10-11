@@ -636,7 +636,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
     private fun mainMenu(anchor: View) {
         val pm = PopupMenu(this, anchor)
         val entries = listOf(
-            "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
+            "Ultimate Hub", "Save Scene", "Scenes…", "Build & Run (fullscreen)", "Build APK…", "AI Agent", "Asset Store", "Sprite Studio", "Texture Studio", "UI Creator", "Animation Editor", "Music Editor", "3D Model Editor", "Controls Editor", "Game Doctor", "Help Center", "Script Recipes", "Export Project (.zip)",
             (if (state.showProfiler) "Hide" else "Show") + " Profiler",
             (if (state.showGrid) "Hide" else "Show") + " Grid",
             (if (state.showColliders) "Hide" else "Show") + " Colliders",
@@ -647,6 +647,7 @@ class EditorActivity : AppCompatActivity(), EditorHost {
         pm.setOnMenuItemClickListener { item ->
             val t = item.title.toString()
             when {
+                t == "Ultimate Hub" -> { saveScene(silent = true); startActivity(Intent(this, UltimateActivity::class.java).putExtra("project", project.name)) }
                 t == "Save Scene" -> saveScene()
                 t == "Scenes…" -> scenesDialog()
                 t.startsWith("Build & Run") -> { saveScene(silent = true); startActivity(Intent(this, PlayerActivity::class.java).putExtra("project", project.name)) }
@@ -674,7 +675,14 @@ class EditorActivity : AppCompatActivity(), EditorHost {
                 t == "Toggle Bottom Panel" -> toggle(bottomPanel)
                 t == "Script API Reference" -> showText("Script API", ScriptEditorActivity.API_DOC)
                 t.startsWith("About") -> showText("About S Engine",
-                    "S Engine 3rd Edition\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
+                    "S Engine — Ultimate Edition (v7)\n\n" +
+                        "• Ultimate runtime: job system, ECS world, fixed-step clock, frame profiler\n" +
+                        "• Pro physics: convex shapes, GJK/EPA, joints, CCD, characters, vehicles, ragdolls, destruction, cloth\n" +
+                        "• AI: navmesh bake, A* + funnel paths, behaviour trees, perception, GOAP, crowds\n" +
+                        "• Animation: skinning, blend trees, state machines, IK, retargeting\n" +
+                        "• Rendering: render graph, culling, LOD, clustered lights, cascaded shadows, ACES/bloom/SSAO\n" +
+                        "• Assets, networking, audio DSP, VFX, cinematics and the gameplay/editor framework\n\n" +
+                        "S Engine 3rd Edition\n\nA 2D & 3D game engine and editor that runs entirely on your Android device.\n\n" +
                         "• 3D: meshes, OBJ models, Blinn-Phong lights, fog, sky, 3D physics, orbit editor\n" +
                         "• Sprite animation editor, asset store, visual blueprints, GLSL shaders & post FX\n" +
                         "• Build real installable APKs of your game\n" +

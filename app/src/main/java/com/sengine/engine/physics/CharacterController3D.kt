@@ -455,9 +455,9 @@ class CharacterController3D(
     override fun toString(): String =
         "Character($position grounded=$grounded slope=${"%.1f".format(slopeAngle)}° v=$verticalVelocity)"
 
-    private companion object {
+    companion object {
         /** Small downward velocity applied while grounded so the capsule stays in contact. */
-        const val STICK_SPEED = 1f
+        private const val STICK_SPEED = 1f
     }
 }
 

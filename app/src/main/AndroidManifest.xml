@@ -25,6 +25,12 @@
         </activity>
 
         <activity
+            android:name=".ui.UltimateActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
             android:name=".ui.EditorActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape"
