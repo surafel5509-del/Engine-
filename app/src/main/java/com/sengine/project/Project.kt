@@ -28,7 +28,7 @@ class Project(val dir: File) {
                 startScene = o.optString("startScene", "Main")
                 created = o.optLong("created", created)
                 orientation = o.optInt("orientation", 0)
-                description = o.optString("description", "")
+                description = o.optString("description", description)
                 accent = o.optInt("accent", accent)
             } catch (_: Exception) {
             }
@@ -70,7 +70,21 @@ class Project(val dir: File) {
 
     fun deleteScene(n: String) = sceneFile(n).delete()
 
-    fun assetFile(n: String) = File(assetsDir, n)
+    /**
+     * Resolve an asset path and reject anything outside this project's assets directory.
+     *
+     * Canonical paths prevent parent traversal, absolute paths, and existing symlinks from
+     * escaping the asset sandbox. All asset reads, writes, and deletes must use this resolver.
+     */
+    fun assetFile(n: String): File {
+        require(n.isNotBlank()) { "Asset path must not be blank" }
+        val root = assetsDir.canonicalFile
+        val target = File(root, n).canonicalFile
+        require(target.path.startsWith(root.path + File.separator)) {
+            "Asset path must stay inside project assets"
+        }
+        return target
+    }
 
     fun listAssets(kind: AssetKind? = null): List<String> =
         (assetsDir.listFiles() ?: emptyArray())
@@ -81,7 +95,8 @@ class Project(val dir: File) {
     fun readAsset(n: String): String? = assetFile(n).takeIf { it.exists() }?.readText()
 
     fun writeAsset(n: String, text: String) {
-        assetsDir.mkdirs(); assetFile(n).writeText(text)
+        assetsDir.mkdirs()
+        assetFile(n).apply { parentFile?.mkdirs() }.writeText(text)
     }
 
     fun loadControls(): com.sengine.engine.controls.ControlLayout {
@@ -98,7 +113,7 @@ class Project(val dir: File) {
         val stem = base.substringBeforeLast('.')
         val ext = base.substringAfterLast('.', "")
         var i = 1
-        while (assetFile("${stem}_$i.$ext").exists()) i++
-        return "${stem}_$i.$ext"
+        while (assetFile("${stem}_${i}.${ext}").exists()) i++
+        return "${stem}_${i}.${ext}"
     }
 }
